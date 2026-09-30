@@ -1,0 +1,18 @@
+.build/
+.private/
+*.pyc
+__pycache__/
+.DS_Store
+dist/
+releases/**/assets/*.zip
+
+# Local project memory and historical experiments can contain private test
+# conversation titles. Keep them available locally and out of the public repo.
+AGENTS.md
+plan.md
+progress.md
+decision.md
+handoff.md
+IMPLEMENTATION_NOTES.md
+TEST_REPORT.md
+LegacyOrExperimental/
