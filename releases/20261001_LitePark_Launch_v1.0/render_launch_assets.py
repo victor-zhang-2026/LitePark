@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parent
 ASSETS = ROOT / "assets"
 ICON = Image.open(ASSETS / "LitePark-icon-512.png").convert("RGBA")
 PANEL = Image.open(ASSETS / "LitePark-demo-queue.png").convert("RGBA")
+TRIGGER = Image.open(ASSETS / "LitePark-trigger.png").convert("RGBA")
 URL = "https://github.com/victor-zhang-2026/LitePark"
 ORANGE = "#E88743"
 DEEP = "#BD642F"
@@ -153,16 +154,86 @@ def save_cards(outdir, size, language):
 
 def covers():
     out=ROOT/"wechat"; out.mkdir(exist_ok=True); (out/"images").mkdir(exist_ok=True)
-    for size,name in [((900,383),"cover-900x383.png"),((900,900),"cover-square.png")]:
-        im=canvas(size).convert("RGBA");d=ImageDraw.Draw(im)
-        logo,pos=fit(ICON,(50,48,130,130)); im.alpha_composite(logo,pos)
-        text(d,(210,65),"LitePark v1.0.0",42,bold=True)
-        text(d,(210,124),"ChatGPT 对话，先停在这里",30,bold=True,cn=True,fill=DEEP)
-        if size[1]>500: panel_card(im,(120,265,660,560))
-        else: badge(d,(210,190),"PARK IT NOW. PICK IT UP LATER.")
-        im.convert("RGB").save(out/name)
+    im=canvas((900,383)).convert("RGBA");d=ImageDraw.Draw(im)
+    d.ellipse((565,-210,1010,235),fill="#F7DDC8")
+    d.ellipse((-170,250,260,680),fill="#FCECDD")
+    logo,pos=fit(ICON,(62,88,90,90)); im.alpha_composite(logo,pos)
+    text(d,(178,95),"LitePark",42,bold=True)
+    text(d,(64,205),"ChatGPT 对话，先停在这里",27,bold=True,cn=True,fill=DEEP)
+    text(d,(66,257),"PARK IT NOW. PICK IT UP LATER.",13,bold=True,fill=BODY)
+    p,pos=fit(PANEL,(580,18,280,350));p=round_image(p,18);shadow_paste(im,p,pos,blur=14,offset=8)
+    t,pos=fit(TRIGGER,(500,252,96,96));im.alpha_composite(t,pos)
+    im.convert("RGB").save(out/"cover-900x383.png")
+
+    im=canvas((900,900)).convert("RGBA");d=ImageDraw.Draw(im)
+    d.ellipse((475,-120,980,385),fill="#F7DDC8")
+    faded=PANEL.copy();faded.putalpha(38);p,pos=fit(faded,(470,250,380,480));im.alpha_composite(p,pos)
+    logo,pos=fit(ICON,(300,155,300,300));shadow_paste(im,logo,pos,blur=22,offset=12)
+    text(d,(450,525),"LitePark",64,bold=True,anchor="mm")
+    text(d,(450,610),"ChatGPT 对话，先停在这里",33,bold=True,cn=True,fill=DEEP,anchor="mm")
+    text(d,(450,690),"PARK IT NOW. PICK IT UP LATER.",16,bold=True,fill=BODY,anchor="mm")
+    im.convert("RGB").save(out/"cover-square.png")
     PANEL.save(out/"images/product-demo-queue.png")
     ICON.save(out/"images/litepark-logo.png")
+
+def wechat_story_images():
+    out=ROOT/"wechat/images";out.mkdir(parents=True,exist_ok=True)
+    specs=[
+      ("01-floating-workflow.png","平时只留一个小入口","鼠标移到悬浮球，LitePark 才展开。"),
+      ("02-manual-order.png","顺序由你决定","拖动当前行右侧的 Handle，队列立即保存。"),
+      ("03-return-to-chatgpt.png","从 LitePark 回到原对话","点击整行，LitePark 唤起 ChatGPT 并验证标题。"),
+      ("04-local-privacy.png","只保存本地队列","标题、顺序与本地 ID 留在 Mac；不保存对话正文。"),
+      ("05-done.png","处理完，轻轻勾掉","Done 只移出 LitePark 队列，不会删除 ChatGPT 对话。"),
+    ]
+    for i,(name,title,subtitle) in enumerate(specs):
+        im=canvas((1200,800)).convert("RGBA");d=ImageDraw.Draw(im)
+        logo,pos=fit(ICON,(62,52,68,68));im.alpha_composite(logo,pos)
+        text(d,(150,65),"LitePark",30,bold=True)
+        text(d,(64,168),title,50,bold=True,cn=True)
+        text(d,(66,240),subtitle,25,cn=True,fill=BODY)
+        if i==0:
+            d.rounded_rectangle((64,335,1136,720),radius=34,fill="#ECE8E3")
+            d.rounded_rectangle((64,335,1136,395),radius=30,fill="#F7F4F0")
+            for x,c in [(98,"#FF5F57"),(132,"#FEBB2E"),(166,"#28C840")]:d.ellipse((x,354,x+20,374),fill=c)
+            for n,w in enumerate([550,700,620]):d.rounded_rectangle((135,460+n*58,135+w,476+n*58),radius=8,fill="#CBC4BE")
+            t,pos=fit(TRIGGER,(970,500,135,135));im.alpha_composite(t,pos)
+            text(d,(1090,660),"需要时出现",22,bold=True,cn=True,fill=DEEP,anchor="ra")
+        elif i==1:
+            panel_card(im,(90,330,630,430))
+            d.rounded_rectangle((770,360,1110,640),radius=28,fill="white")
+            text(d,(810,400),"Product Research",23,bold=True)
+            text(d,(810,480),"Weekend Trip Ideas",23,bold=True)
+            d.line((792,458,1080,458),fill=ORANGE,width=6)
+            text(d,(940,585),"Drag to reorder",21,bold=True,fill=DEEP,anchor="mm")
+        elif i==2:
+            panel_card(im,(70,340,460,390))
+            d.rounded_rectangle((690,350,1120,705),radius=30,fill="#302A27")
+            text(d,(905,410),"ChatGPT",33,bold=True,fill="white",anchor="mm")
+            text(d,(735,490),"Product Research",27,bold=True,fill="white")
+            d.rounded_rectangle((735,555,1075,625),radius=16,fill="#3B3734")
+            text(d,(905,590),"Opened and verified",20,bold=True,fill="#F4CBA8",anchor="mm")
+            d.line((570,525,650,525),fill=ORANGE,width=8)
+            d.polygon([(650,525),(625,507),(625,543)],fill=ORANGE)
+        elif i==3:
+            labels=[("TITLE","对话标题"),("ORDER","手动顺序"),("LOCAL ID","本地项目 ID")]
+            for n,(tag,desc) in enumerate(labels):
+                yy=350+n*118;d.rounded_rectangle((64,yy,710,yy+88),radius=22,fill="white")
+                text(d,(94,yy+18),tag,16,bold=True,fill=ORANGE);text(d,(250,yy+25),desc,24,bold=True,cn=True)
+            d.rounded_rectangle((780,350,1136,672),radius=30,fill="#302A27")
+            text(d,(958,415),"不保存",28,bold=True,cn=True,fill="#F4CBA8",anchor="mm")
+            text(d,(958,505),"Prompt\n回复\n截图\n账号信息",27,bold=True,cn=True,fill="white",spacing=16,anchor="ma")
+        else:
+            d.rounded_rectangle((70,360,540,650),radius=30,fill="#302A27")
+            d.ellipse((112,421,142,451),outline=ORANGE,width=4)
+            text(d,(190,430),"Product Research",28,bold=True,fill="white")
+            text(d,(115,535),"点击 Done",22,bold=True,cn=True,fill="#F4CBA8")
+            d.line((575,505,650,505),fill=ORANGE,width=8)
+            d.polygon([(650,505),(625,487),(625,523)],fill=ORANGE)
+            d.rounded_rectangle((690,360,1130,650),radius=30,fill="#302A27")
+            text(d,(910,435),"LitePark",32,bold=True,fill="white",anchor="mm")
+            text(d,(910,520),"3",72,bold=True,fill="#F4CBA8",anchor="mm")
+            text(d,(910,590),"队列继续保持清爽",21,bold=True,cn=True,fill="white",anchor="mm")
+        im.convert("RGB").save(out/name)
 
 if __name__ == "__main__":
     save_cards(ROOT/"xiaohongshu/images",(1080,1440),"cn")
@@ -171,4 +242,5 @@ if __name__ == "__main__":
     for name in ["01-cover.png","03-workflow.png","05-privacy.png","06-open-source.png"]:
         Image.open(ROOT/"linkedin/images"/name).save(ROOT/"x/images"/name)
     covers()
+    wechat_story_images()
     print("Generated LitePark launch assets")

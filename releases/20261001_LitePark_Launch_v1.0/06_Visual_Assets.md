@@ -2,13 +2,15 @@
 
 ## Ready-to-publish platform packages
 
-- `wechat/` — formatted article HTML, one-click copy page, 900×383 cover, square cover, genuine Demo UI and logo.
+- `wechat/` — formatted article HTML, one-click copy page, redesigned 900×383 and square covers, genuine Demo UI, floating-trigger scene, manual-order illustration, verified-return flow, Done state, and local-privacy diagram.
 - `xiaohongshu/` — six 1080×1440 Chinese launch cards.
 - `x/` — four 1080×1350 English launch cards plus ALT text.
 - `linkedin/` — six 1080×1350 English launch cards plus ALT text.
 - `render_launch_assets.py` — deterministic asset renderer based on existing LitePark artwork and genuine privacy-safe Demo UI.
 
 No social image displays a sequence/page number.
+
+The WeChat story images deliberately alternate genuine product UI with explanatory diagrams, following the stronger visual rhythm proven in LiteTick's launch package. They reuse LitePark's actual logo, actual floating-trigger drawing, and privacy-safe genuine queue capture.
 
 ## Approved public assets
 

@@ -64,9 +64,12 @@ LitePark v1.0.0 已开源：
 
 1. `wechat/cover-900x383.png` — 公众号头条封面
 2. `wechat/images/product-demo-queue.png` — 使用虚构 Demo 数据的真实队列界面
-3. `xiaohongshu/images/03-workflow.png` — 加入、返回和 Done 流程
-4. `xiaohongshu/images/05-privacy.png` — 本地隐私说明
-5. `xiaohongshu/images/06-open-source.png` — GitHub 与下载 CTA
+3. `wechat/images/01-floating-workflow.png` — 桌面悬浮球入口
+4. `wechat/images/02-manual-order.png` — 手动排序
+5. `wechat/images/03-return-to-chatgpt.png` — 返回并验证 ChatGPT 对话
+6. `wechat/images/05-done.png` — Done 后保持队列清爽
+7. `wechat/images/04-local-privacy.png` — 本地隐私边界
+8. `xiaohongshu/images/06-open-source.png` — GitHub 与下载 CTA
 
 可直接预览和复制的完整排版稿位于 `wechat/article.html` 与 `wechat/article-wechat-copy.html`。所有对话名称均为虚构 Demo 数据。
 
