@@ -4,7 +4,7 @@
 __pycache__/
 .DS_Store
 dist/
-releases/**/assets/*.zip
+releases/
 
 # Local project memory and historical experiments can contain private test
 # conversation titles. Keep them available locally and out of the public repo.
