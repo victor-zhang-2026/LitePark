@@ -62,13 +62,13 @@ LitePark v1.0.0 已开源：
 
 ## 图片顺序
 
-1. LitePark App Icon
-2. 使用虚构 Demo 数据的完整队列界面
-3. 浮窗标题区与悬浮球局部图
-4. GitHub README / Release 页面截图（发布后可补）
-5. 快捷键和 Known Issue 说明卡（后续可制作）
+1. `wechat/cover-900x383.png` — 公众号头条封面
+2. `wechat/images/product-demo-queue.png` — 使用虚构 Demo 数据的真实队列界面
+3. `xiaohongshu/images/03-workflow.png` — 加入、返回和 Done 流程
+4. `xiaohongshu/images/05-privacy.png` — 本地隐私说明
+5. `xiaohongshu/images/06-open-source.png` — GitHub 与下载 CTA
 
-现有公开安全素材位于 `assets/`。所有对话名称均为虚构 Demo 数据。
+可直接预览和复制的完整排版稿位于 `wechat/article.html` 与 `wechat/article-wechat-copy.html`。所有对话名称均为虚构 Demo 数据。
 
 ## CTA
 

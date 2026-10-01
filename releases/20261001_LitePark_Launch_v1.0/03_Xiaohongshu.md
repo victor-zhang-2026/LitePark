@@ -49,12 +49,14 @@ https://github.com/victor-zhang-2026/LitePark
 
 ## 图片顺序
 
-1. 封面：App Icon + “ChatGPT 对话，先停在这里”
-2. 使用虚构 Demo 数据的 LitePark 队列
-3. 悬浮球与展开面板
-4. “添加 → 排序 → 打开 → Done”流程卡
-5. 快捷键与 macOS / ChatGPT Desktop 要求
-6. GitHub 下载页
+1. `xiaohongshu/images/01-cover.png` — 封面与真实 Demo 队列
+2. `xiaohongshu/images/02-problem.png` — 为什么历史记录还不够
+3. `xiaohongshu/images/03-workflow.png` — 加入、返回、Done 流程
+4. `xiaohongshu/images/04-features.png` — 真实 LitePark 界面与核心能力
+5. `xiaohongshu/images/05-privacy.png` — 本地隐私边界
+6. `xiaohongshu/images/06-open-source.png` — GitHub 下载 CTA
+
+图片均为 1080×1440，按文件名顺序上传，不带可见页码。
 
 ## Hashtags
 

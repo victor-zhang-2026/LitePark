@@ -23,3 +23,6 @@ If this matches your ChatGPT workflow, I would value practical feedback: where d
 
 #macOS #ChatGPT #VibeCoding #OpenSource #ProductDesign #SwiftUI
 
+## Image sequence
+
+Upload `linkedin/images/01-cover.png` through `06-open-source.png` in filename order. Add the descriptions from `linkedin/alt-text.md` and preview the first-image crop on desktop and mobile.
