@@ -39,13 +39,13 @@ LitePark uses macOS Accessibility to read the active conversation title and acti
 
 ## Installation
 
-1. Download `LitePark-v1.0.0-macOS.zip` from the [v1.0.0 release](https://github.com/victor-zhang-2026/LitePark/releases/tag/v1.0.0).
+1. Download `LitePark-v1.0.1-macOS.zip` from the [v1.0.1 release](https://github.com/victor-zhang-2026/LitePark/releases/tag/v1.0.1).
 2. Unzip it and move `LitePark.app` to Applications.
 3. Right-click LitePark and choose **Open** the first time.
 4. Grant Accessibility access when macOS asks. You can also enable it in **System Settings → Privacy & Security → Accessibility**.
 5. Start ChatGPT Desktop before using LitePark.
 
-The v1.0.0 build is not notarized with Apple. macOS may show an unidentified developer warning. Use right-click → **Open**, or choose **Open Anyway** in **System Settings → Privacy & Security** after the first blocked launch.
+The public build is not notarized with Apple. macOS may show an unidentified developer warning. Use right-click → **Open**, or choose **Open Anyway** in **System Settings → Privacy & Security** after the first blocked launch.
 
 ## Usage
 

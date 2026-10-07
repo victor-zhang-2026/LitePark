@@ -494,6 +494,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
     }
 
     func triggerEntered() {
+        guard !draggingTrigger else { return }
         triggerHovered = true
         closeWork?.cancel()
         // Match LiteTick: entering the floating ball opens the list. The
@@ -512,7 +513,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.isShown, !self.isPinned,
                   !self.triggerHovered, !self.listHovered,
-                  self.coordinator.draggingID == nil else { return }
+                  self.coordinator.draggingID == nil, !self.draggingTrigger else { return }
             self.closePanel()
         }
         closeWork = work
@@ -548,6 +549,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
 
     private func configurePanels() {
         triggerPanel = LaterFloatingPanel(contentRect: NSRect(origin: .zero, size: triggerSize), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        triggerPanel.allowsFreePlacement = true
         prepare(triggerPanel)
         triggerPanel.becomesKeyOnlyIfNeeded = true
         triggerPanel.hasShadow = false
@@ -644,8 +646,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
     }
 
     private func constrainedTriggerOrigin(_ origin: NSPoint, to screen: NSScreen) -> NSPoint {
-        let frame = screen.visibleFrame
-        return NSPoint(x: min(max(origin.x, frame.minX + 8), frame.maxX - triggerSize.width - 8), y: min(max(origin.y, frame.minY + 8), frame.maxY - triggerSize.height - 8))
+        TriggerPlacement.clamp(origin, size: triggerSize, screenFrame: screen.frame)
     }
 
     private func savedTriggerOrigin() -> NSPoint {
@@ -748,8 +749,17 @@ final class FloatingTriggerView: NSView {
     }
     override func mouseEntered(with event: NSEvent) { setHovered(true); controller?.triggerEntered() }
     override func mouseExited(with event: NSEvent) { setHovered(false); controller?.triggerExited() }
-    override func mouseDown(with event: NSEvent) { lastPoint = NSEvent.mouseLocation; dragged = false }
-    override func mouseDragged(with event: NSEvent) { guard let lastPoint else { return }; let current = NSEvent.mouseLocation; if hypot(current.x-lastPoint.x, current.y-lastPoint.y) > 1 { dragged = true }; controller?.moveTrigger(by: CGSize(width: current.x-lastPoint.x, height: lastPoint.y-current.y), ended: false); self.lastPoint = current }
+    override func mouseDown(with event: NSEvent) {
+        lastPoint = window?.convertPoint(toScreen: event.locationInWindow)
+        dragged = false
+    }
+    override func mouseDragged(with event: NSEvent) {
+        guard let lastPoint, let current = window?.convertPoint(toScreen: event.locationInWindow) else { return }
+        if !dragged && hypot(current.x - lastPoint.x, current.y - lastPoint.y) <= 3 { return }
+        dragged = true
+        controller?.moveTrigger(by: CGSize(width: current.x - lastPoint.x, height: lastPoint.y - current.y), ended: false)
+        self.lastPoint = current
+    }
     override func mouseUp(with event: NSEvent) {
         if dragged {
             controller?.moveTrigger(by: .zero, ended: true)
@@ -771,6 +781,12 @@ final class FloatingTriggerView: NSView {
 }
 
 final class LaterFloatingPanel: NSPanel {
+    var allowsFreePlacement = false
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        // The trigger is a movable desktop accessory. AppKit's default
+        // constraint reserves Dock/menu-bar space and can resist edge drags.
+        allowsFreePlacement ? frameRect : super.constrainFrameRect(frameRect, to: screen)
+    }
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 }

@@ -15,8 +15,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <key>CFBundleName</key><string>LitePark</string>
 <key>CFBundleDisplayName</key><string>LitePark</string>
 <key>CFBundleExecutable</key><string>ChatGPTLaterQueue</string>
-<key>CFBundleVersion</key><string>1.0.0</string>
-<key>CFBundleShortVersionString</key><string>1.0.0</string>
+<key>CFBundleVersion</key><string>1.0.1</string>
+<key>CFBundleShortVersionString</key><string>1.0.1</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleIconFile</key><string>LiteParkCards.icns</string>
 <key>LSUIElement</key><true/>
