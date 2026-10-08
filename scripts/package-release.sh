@@ -2,7 +2,7 @@
 set -eu
 
 cd "$(dirname "$0")/.."
-VERSION="1.0.1"
+VERSION="1.0.2"
 OUTPUT="$PWD/dist/LitePark-v${VERSION}-macOS.zip"
 STAGE="$(mktemp -d "${TMPDIR:-/tmp}/litepark-release.XXXXXX")"
 trap 'rm -rf "$STAGE"' EXIT

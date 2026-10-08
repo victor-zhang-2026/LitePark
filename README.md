@@ -39,7 +39,7 @@ LitePark uses macOS Accessibility to read the active conversation title and acti
 
 ## Installation
 
-1. Download `LitePark-v1.0.1-macOS.zip` from the [v1.0.1 release](https://github.com/victor-zhang-2026/LitePark/releases/tag/v1.0.1).
+1. Download `LitePark-v1.0.2-macOS.zip` from the [v1.0.2 release](https://github.com/victor-zhang-2026/LitePark/releases/tag/v1.0.2).
 2. Unzip it and move `LitePark.app` to Applications.
 3. Right-click LitePark and choose **Open** the first time.
 4. Grant Accessibility access when macOS asks. You can also enable it in **System Settings → Privacy & Security → Accessibility**.
