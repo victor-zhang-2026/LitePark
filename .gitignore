@@ -16,3 +16,9 @@ handoff.md
 IMPLEMENTATION_NOTES.md
 TEST_REPORT.md
 LegacyOrExperimental/
+
+# Local build backups and verification evidence
+/build/
+
+release/**/*.zip
+release/**/download-verification/

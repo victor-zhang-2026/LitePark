@@ -363,6 +363,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
     private let onSettings: () -> Void
     private let interactive: Bool
     private var triggerPanel: LaterFloatingPanel!
+    private let floatingPlacement = FloatingPlacement()
     private var panel: NSPanel!
     private var triggerView: FloatingTriggerView!
     private var cancellables = Set<AnyCancellable>()
@@ -418,7 +419,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
     func togglePanel() { isShown ? closePanel() : openFromTriggerClick() }
 
     func showTrigger() {
-        triggerPanel.setFrameOrigin(savedTriggerOrigin())
+        floatingPlacement.restore(triggerPanel, fallback: savedTriggerOrigin())
         triggerPanel.orderFrontRegardless()
     }
 
@@ -531,11 +532,10 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
         NSApp.terminate(nil)
     }
 
-    func moveTrigger(by translation: CGSize, ended: Bool) {
-        let current = triggerPanel.frame.origin
-        let proposed = NSPoint(x: current.x + translation.width, y: current.y - translation.height)
-        triggerPanel.setFrameOrigin(proposed)
+    func moveTrigger(to proposed: NSPoint, ended: Bool) {
         draggingTrigger = true
+        closeWork?.cancel()
+        triggerPanel.setFrameOrigin(proposed)
         if ended {
             let pointer = NSEvent.mouseLocation
             let proposedFrame = NSRect(origin: proposed, size: triggerSize)
@@ -547,6 +547,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
             triggerPanel.setFrameOrigin(settled)
             UserDefaults.standard.set(Double(settled.x), forKey: "triggerX")
             UserDefaults.standard.set(Double(settled.y), forKey: "triggerY")
+            floatingPlacement.remember(triggerPanel)
             draggingTrigger = false
             if isShown { refreshPanel() }
         }
@@ -642,7 +643,12 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
         outsideMonitor = nil; localOutsideMonitor = nil; keyMonitor = nil; localKeyMonitor = nil
     }
 
-    @objc private func displayParametersChanged() { showTrigger(); if isShown { refreshPanel() } }
+    @objc private func displayParametersChanged() {
+        floatingPlacement.afterScreenChange { [weak self] in
+            guard let self, !self.draggingTrigger else { return }
+            self.showTrigger(); if self.isShown { self.refreshPanel() }
+        }
+    }
 
     private func screenContaining(_ frame: NSRect) -> NSScreen? {
         let center = NSPoint(x: frame.midX, y: frame.midY)
@@ -675,7 +681,8 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
 final class FloatingTriggerView: NSView {
     weak var controller: FloatingPanelController?
     var count = 0 { didSet { needsDisplay = true } }
-    private var lastPoint: NSPoint?
+    private var startPoint: NSPoint?
+    private var startOrigin: NSPoint?
     private var dragged = false
     private var trackingAreaRef: NSTrackingArea?
     private var hoverAmount: CGFloat = 0
@@ -762,24 +769,26 @@ final class FloatingTriggerView: NSView {
     override func mouseEntered(with event: NSEvent) { setHovered(true); controller?.triggerEntered() }
     override func mouseExited(with event: NSEvent) { setHovered(false); controller?.triggerExited() }
     override func mouseDown(with event: NSEvent) {
-        lastPoint = NSEvent.mouseLocation
+        startPoint = NSEvent.mouseLocation
+        startOrigin = window?.frame.origin
         dragged = false
     }
     override func mouseDragged(with event: NSEvent) {
-        guard let lastPoint else { return }
+        guard let startPoint, let startOrigin else { return }
         let current = NSEvent.mouseLocation
-        if !dragged && hypot(current.x - lastPoint.x, current.y - lastPoint.y) <= 3 { return }
+        let dx = current.x - startPoint.x, dy = current.y - startPoint.y
+        if !dragged && hypot(dx, dy) <= 3 { return }
         dragged = true
-        controller?.moveTrigger(by: CGSize(width: current.x - lastPoint.x, height: lastPoint.y - current.y), ended: false)
-        self.lastPoint = current
+        controller?.moveTrigger(to: NSPoint(x: startOrigin.x + dx, y: startOrigin.y + dy), ended: false)
     }
     override func mouseUp(with event: NSEvent) {
-        if dragged {
-            controller?.moveTrigger(by: .zero, ended: true)
+        if dragged, let startPoint, let startOrigin {
+            let pointer = NSEvent.mouseLocation
+            controller?.moveTrigger(to: NSPoint(x: startOrigin.x + pointer.x - startPoint.x, y: startOrigin.y + pointer.y - startPoint.y), ended: true)
         } else {
             controller?.openFromTriggerClick()
         }
-        lastPoint = nil
+        startPoint = nil; startOrigin = nil
         dragged = false
     }
     override func rightMouseDown(with event: NSEvent) {
