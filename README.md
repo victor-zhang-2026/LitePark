@@ -9,22 +9,23 @@
 <p align="center">A lightweight macOS companion for parking ChatGPT conversations you want to return to later.</p>
 
 <p align="center">
-  <img src="Screenshots/litepark-demo.png" width="620" alt="LitePark queue with demo conversations">
+  <img src="Screenshots/litepark-demo.png" width="420" alt="LitePark Parking Board with fictional demo conversations">
 </p>
 
 ## What is LitePark?
 
 ChatGPT history is useful for finding old conversations, but it does not express a simple intention: “I cannot deal with this now, but I want to come back to it.” LitePark adds that small workflow to the ChatGPT desktop experience.
 
-Use a global shortcut to park the conversation currently open in ChatGPT. A compact floating panel keeps the saved conversations in a manual queue until you open them again or mark them done.
+Use a global shortcut to park the conversation currently open in ChatGPT. A compact, two-column Parking Board gives each saved conversation its own space until you open it again or mark it done.
 
 ## Features
 
 - Add the current ChatGPT conversation with `⌃⌥L`
-- Open or close the queue with `⌃⌥K`
-- Reorder conversations by dragging the handle shown on row hover
+- Open or close the Parking Board with `⌃⌥K`
+- Reorder cards across rows and columns using the handle shown on hover
+- Set Card Limit to 6, 9, 12, 16, or 20 cards; the default is 12
 - Open a saved conversation directly in ChatGPT Desktop
-- Mark a conversation done to remove it from the queue
+- Mark a conversation done to remove it from the board
 - Move the floating trigger anywhere on your displays
 - Keep queue data locally on your Mac
 
@@ -39,7 +40,7 @@ LitePark uses macOS Accessibility to read the active conversation title and acti
 
 ## Installation
 
-1. Download `LitePark-v1.0.3-macOS.zip` from the [v1.0.3 release](https://github.com/victor-zhang-2026/LitePark/releases/tag/v1.0.3).
+1. Download `LitePark-v1.1.0-macOS.zip` from the [v1.1.0 release](https://github.com/victor-zhang-2026/LitePark/releases/tag/v1.1.0).
 2. Unzip it and move `LitePark.app` to Applications.
 3. Right-click LitePark and choose **Open** the first time.
 4. Grant Accessibility access when macOS asks. You can also enable it in **System Settings → Privacy & Security → Accessibility**.
@@ -51,15 +52,18 @@ The public build is not notarized with Apple. macOS may show an unidentified dev
 
 1. Open a conversation in ChatGPT Desktop.
 2. Press `⌃⌥L` to add it to LitePark.
-3. Hover over or click the floating LitePark trigger to show the queue.
-4. Click a conversation title to open it in ChatGPT.
-5. Hover a row to reveal its drag handle, or use the circle on the left to mark it done.
+3. Hover over or click the floating LitePark trigger to show the board.
+4. Click a conversation card to open it in ChatGPT.
+5. Hover a card to reveal its drag handle, or use the circle at the top left to mark it done.
+6. Use **Settings → Card Limit** to adjust capacity. The header shows saved cards / capacity.
+
+When the board is full, new additions are paused and a brief “Card limit reached.” message appears. Lowering the limit keeps all existing cards; adding resumes when the count falls below the limit. Empty spaces are visual placeholders.
 
 ## Known issues
 
 ### Conversation names
 
-LitePark v1.0.0 identifies conversations by title. For the most reliable workflow:
+LitePark identifies conversations by title. For the most reliable workflow:
 
 1. Give the conversation a useful name in ChatGPT first.
 2. Add it to LitePark.
@@ -69,7 +73,7 @@ Different conversations with the same title are treated as ambiguous. This mecha
 
 ### Sidebar visibility
 
-Automatic reopening requires one exact matching conversation to be exposed in ChatGPT Desktop's current sidebar accessibility tree. LitePark keeps the item when it cannot safely identify one unique match.
+Automatic reopening requires one exact matching conversation to be exposed in ChatGPT Desktop's current sidebar accessibility tree. Expand the relevant project or chat group before opening a parked conversation. LitePark keeps the item when it cannot safely identify one unique match.
 
 ## Privacy
 
@@ -80,15 +84,22 @@ All screenshots in this repository use fictional demo conversation names.
 ## Build from source
 
 ```bash
-swift build -c release
 ./scripts/build-app.sh
 ```
 
 The build script creates `.build/LitePark.app`. It uses the stable LitePark local signing identity when available and otherwise falls back to ad-hoc signing. Public distribution requires an appropriate Apple Developer signing and notarization setup for a warning-free first launch.
 
+For a specific installed macOS SDK, set `LITEPARK_MACOS_SDK` when building or packaging:
+
+```bash
+LITEPARK_MACOS_SDK=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk ./scripts/build-app.sh
+```
+
+`./scripts/package-release.sh` creates a ZIP in `dist/` using the built app’s version. The focused, temporary-data checks can be run with `./scripts/test-parking-board.sh` and the same SDK override.
+
 ## Architecture
 
-- SwiftUI queue interface with AppKit floating panels
+- SwiftUI Parking Board with AppKit floating panels
 - AXUIElement integration for ChatGPT title capture and sidebar navigation
 - Carbon global shortcuts
 - Codable JSON persistence in Application Support

@@ -42,10 +42,18 @@ enum LaterError: LocalizedError {
 }
 
 final class LaterStore: ObservableObject {
+    static let cardLimits = [6, 9, 12, 16, 20]
+    @Published var cardLimit: Int {
+        didSet { defaults.set(cardLimit, forKey: "cardLimit") }
+    }
     @Published private(set) var items: [LaterItem] = []
     private let fileURL: URL
+    private let defaults: UserDefaults
 
-    init(fileURL: URL? = nil) {
+    init(fileURL: URL? = nil, defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        let savedLimit = defaults.integer(forKey: "cardLimit")
+        cardLimit = Self.cardLimits.contains(savedLimit) ? savedLimit : 12
         if let fileURL {
             self.fileURL = fileURL
         } else {
@@ -56,17 +64,20 @@ final class LaterStore: ObservableObject {
     }
 
     var count: Int { items.count }
+    var isFull: Bool { count >= cardLimit }
 
     func contains(title: String) -> Bool {
         items.contains { $0.title == title }
     }
 
-    func add(title: String) {
-        guard !contains(title: title) else { return }
+    @discardableResult
+    func add(title: String) -> Bool {
+        guard !contains(title: title), !isFull else { return false }
         let item = LaterItem(id: UUID(), title: title, addedAt: Date(), order: 0)
         items.insert(item, at: 0)
         normalize()
         save()
+        return true
     }
 
     func remove(at index: Int) -> LaterItem? {
@@ -151,8 +162,10 @@ final class QueueCoordinator: ObservableObject {
     private var undoWork: DispatchWorkItem?
     @Published var hoveredRowID: UUID?
     @Published var draggingID: UUID?
-    @Published var dropTargetID: UUID?
-    @Published var dropAtEnd = false
+    @Published private(set) var reorderPreview: [LaterItem]?
+    @Published private(set) var limitReached = false
+    private var limitFeedbackWork: DispatchWorkItem?
+    private var dragSlots: [CGRect] = []
     var rowFrames: [UUID: CGRect] = [:]
     private var storeSubscription: AnyCancellable?
 
@@ -164,22 +177,54 @@ final class QueueCoordinator: ObservableObject {
     }
 
     func updateReorder(_ id: UUID, at point: CGPoint) {
-        draggingID = id
-        let frames = rowFrames.filter { $0.key != id }.sorted { $0.value.midY < $1.value.midY }
-        dropTargetID = frames.first(where: { point.y < $0.value.midY })?.key
-        dropAtEnd = dropTargetID == nil
+        if draggingID == nil {
+            guard store.items.contains(where: { $0.id == id }) else { return }
+            // Keep slot geometry stable while the preview makes room for the card.
+            dragSlots = store.items.compactMap { rowFrames[$0.id] }
+            guard dragSlots.count == store.count else { return }
+            reorderPreview = store.items
+            draggingID = id
+        }
+        guard draggingID == id, var preview = reorderPreview,
+              let source = preview.firstIndex(where: { $0.id == id }),
+              let target = dragSlots.indices.min(by: {
+                  hypot(point.x - dragSlots[$0].midX, point.y - dragSlots[$0].midY) <
+                  hypot(point.x - dragSlots[$1].midX, point.y - dragSlots[$1].midY)
+              }), source != target else { return }
+        let item = preview.remove(at: source)
+        preview.insert(item, at: target)
+        reorderPreview = preview
     }
 
     func finishReorder() {
-        defer { draggingID = nil; dropTargetID = nil; dropAtEnd = false }
-        guard let id = draggingID else { return }
-        store.move(id, before: dropTargetID)
+        defer { cancelReorder() }
+        guard let id = draggingID, let preview = reorderPreview,
+              let index = preview.firstIndex(where: { $0.id == id }),
+              store.items.map(\.id) != preview.map(\.id) else { return }
+        store.move(id, before: index + 1 < preview.count ? preview[index + 1].id : nil)
+    }
+
+    func cancelReorder() {
+        if draggingID != nil { NSCursor.arrow.set() }
+        draggingID = nil
+        reorderPreview = nil
+        dragSlots = []
+    }
+
+    private func showLimitFeedback() {
+        limitFeedbackWork?.cancel()
+        limitReached = true
+        islandState = .expanded
+        let work = DispatchWorkItem { [weak self] in self?.limitReached = false }
+        limitFeedbackWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
     }
 
     private var isCapturing = false
 
     func addCurrent() {
         guard !isCapturing else { return }
+        guard !store.isFull else { showLimitFeedback(); return }
         isCapturing = true
         Task { @MainActor in
             defer { isCapturing = false }
@@ -188,8 +233,11 @@ final class QueueCoordinator: ObservableObject {
                 if store.contains(title: title) {
                     RuntimeLog.write("add duplicate ignored")
                 } else {
-                    store.add(title: title)
-                    RuntimeLog.write("add saved")
+                    if store.add(title: title) {
+                        RuntimeLog.write("add saved")
+                    } else if store.isFull {
+                        showLimitFeedback()
+                    }
                 }
             } catch {
                 RuntimeLog.write("add failed: \(error.localizedDescription)")
@@ -466,6 +514,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
         guard isShown else { return }
         isShown = false
         coordinator.hoveredRowID = nil
+        coordinator.cancelReorder()
         isPinned = false
         listHovered = false
         transitionID &+= 1
@@ -607,7 +656,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
     }
 
     private func expandedHeight() -> CGFloat {
-        coordinator.store.count == 0 ? 190 : min(560, 62 + CGFloat(min(coordinator.store.count, 6)) * 68 + 18)
+        coordinator.store.count == 0 ? 190 : 54 + QueueView.boardHeight(for: coordinator.store.count, limit: coordinator.store.cardLimit)
     }
 
     private func installDismissMonitors() {
@@ -837,7 +886,7 @@ struct FloatingPanelView: View {
                         .font(.system(size: 15, weight: .semibold))
                 }
                 Spacer()
-                Text("\(coordinator.store.count)")
+                Text("\(coordinator.store.count) / \(coordinator.store.cardLimit)")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Color.white.opacity(0.70))
                 Button(action: onSettings) {
@@ -855,6 +904,18 @@ struct FloatingPanelView: View {
         QueueView(coordinator: coordinator)
         }
         .background(Color.laterSurface)
+        .overlay(alignment: .bottom) {
+            if coordinator.limitReached {
+                Text("Card limit reached.")
+                    .font(.system(size: 13, weight: .medium))
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .background(Color.laterElevated, in: RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.laterAccent.opacity(0.4)))
+                    .padding(12)
+                    .allowsHitTesting(false)
+                    .accessibilityLabel("Card limit reached. Finish a card before adding another.")
+            }
+        }
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -899,9 +960,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func showSettings() {
         floatingPanel.closePanel()
         if settingsWindow == nil {
-            let view = SettingsView()
+            let view = SettingsView(store: coordinator.store)
             let host = NSHostingView(rootView: view)
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 430, height: 330), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 430, height: 430), styleMask: [.titled, .closable], backing: .buffered, defer: false)
             window.title = "LitePark Settings"
             window.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.assistiveTechHighWindow)) + 1)
             window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -917,6 +978,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 struct SettingsView: View {
+    @ObservedObject var store: LaterStore
+
     var body: some View {
         Form {
             Section("Shortcuts") {
@@ -929,6 +992,13 @@ struct SettingsView: View {
                     Spacer()
                     Button(SMAppService.mainApp.status == .enabled ? "Enabled" : "Enable") {
                         try? SMAppService.mainApp.register()
+                    }
+                }
+            }
+            Section {
+                Picker("Card Limit", selection: $store.cardLimit) {
+                    ForEach(LaterStore.cardLimits, id: \.self) { limit in
+                        Text("\(limit)").tag(limit)
                     }
                 }
             }
