@@ -6,14 +6,6 @@ import ServiceManagement
 import Carbon.HIToolbox
 import UniformTypeIdentifiers
 
-// V1 retains its dark surfaces with one restrained warm-orange accent.
-extension Color {
-    static let laterAccent = Color(nsColor: BrandArtwork.primary)
-    static let laterSurface = Color(red: 28 / 255, green: 28 / 255, blue: 30 / 255)
-    static let laterElevated = Color(red: 44 / 255, green: 44 / 255, blue: 46 / 255)
-    static let laterSeparator = Color.white.opacity(0.14)
-}
-
 struct LaterItem: Identifiable, Codable, Equatable {
     let id: UUID
     var title: String
@@ -426,6 +418,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
     private var listHovered = false
     private var isPinned = false
     private var draggingTrigger = false
+    private var isAppearanceTransitioning = false
     private let triggerSize = NSSize(width: 48, height: 48)
     private let panelOriginXKey = "floatingPanelOriginX"
     private let panelOriginYKey = "floatingPanelOriginY"
@@ -465,6 +458,37 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
     }
 
     func togglePanel() { isShown ? closePanel() : openFromTriggerClick() }
+
+    func transitionAppearance(_ change: @escaping () -> Void) {
+        guard !isAppearanceTransitioning else { return }
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+              let contentView = panel.contentView,
+              contentView.bounds.width > 0, contentView.bounds.height > 0,
+              let bitmap = contentView.bitmapImageRepForCachingDisplay(in: contentView.bounds) else {
+            change()
+            return
+        }
+        contentView.cacheDisplay(in: contentView.bounds, to: bitmap)
+        let image = NSImage(size: contentView.bounds.size)
+        image.addRepresentation(bitmap)
+        let snapshot = NSImageView(frame: contentView.bounds)
+        snapshot.image = image
+        snapshot.imageScaling = .scaleAxesIndependently
+        contentView.addSubview(snapshot)
+        isAppearanceTransitioning = true
+        change()
+        DispatchQueue.main.async { [weak self] in
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = 0.26
+                snapshot.animator().alphaValue = 0
+            }, completionHandler: {
+                DispatchQueue.main.async {
+                    snapshot.removeFromSuperview()
+                    self?.isAppearanceTransitioning = false
+                }
+            })
+        }
+    }
 
     func showTrigger() {
         floatingPlacement.restore(triggerPanel, fallback: savedTriggerOrigin())
@@ -858,8 +882,11 @@ final class LaterFloatingPanel: NSPanel {
 
 struct FloatingPanelView: View {
     @ObservedObject var coordinator: QueueCoordinator
+    @AppStorage("appAppearance") private var appearanceRawValue = AppearanceMode.dark.rawValue
     let controller: FloatingPanelController
     let onSettings: () -> Void
+
+    private var appearanceMode: AppearanceMode { AppearanceMode(rawValue: appearanceRawValue) ?? .dark }
 
     var body: some View {
         Group {
@@ -870,14 +897,16 @@ struct FloatingPanelView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onHover { controller.listHoverChanged($0) }
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(appearanceMode.colorScheme)
+        .onAppear { NSApp.appearance = appearanceMode.nativeAppearance }
+        .onChange(of: appearanceRawValue) { _ in NSApp.appearance = appearanceMode.nativeAppearance }
     }
 
     private var expanded: some View {
         VStack(spacing: 0) {
             HStack {
                 HStack(spacing: 11) {
-                    Image(nsImage: NSApp.applicationIconImage)
+                    Image(nsImage: BrandArtwork.headerImage)
                         .resizable()
                         .interpolation(.high)
                         .frame(width: 30, height: 30)
@@ -888,17 +917,32 @@ struct FloatingPanelView: View {
                 Spacer()
                 Text("\(coordinator.store.count) / \(coordinator.store.cardLimit)")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.70))
+                    .foregroundStyle(Color.laterInk.opacity(0.70))
+                Button {
+                    controller.transitionAppearance {
+                        appearanceRawValue = appearanceMode == .light
+                            ? AppearanceMode.dark.rawValue : AppearanceMode.light.rawValue
+                    }
+                } label: {
+                    Image(systemName: appearanceMode.symbolName)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Color.laterInk.opacity(0.78))
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(appearanceMode.toggleLabel)
+                .accessibilityLabel(appearanceMode.toggleLabel)
                 Button(action: onSettings) {
                     Image(systemName: "gearshape")
-                        .foregroundStyle(.white.opacity(0.78))
+                        .foregroundStyle(Color.laterInk.opacity(0.78))
                         .accessibilityLabel("Settings")
                 }.buttonStyle(.plain)
                 Button { coordinator.collapse() } label: {
-                    Image(systemName: "xmark").foregroundStyle(.white.opacity(0.78))
+                    Image(systemName: "xmark").foregroundStyle(Color.laterInk.opacity(0.78))
                 }.buttonStyle(.plain).accessibilityLabel("Close LitePark")
             }
-            .foregroundStyle(.white)
+            .foregroundStyle(Color.laterInk)
             .padding(.horizontal, 18).frame(height: 54)
         .background(Color.laterElevated)
         QueueView(coordinator: coordinator)
@@ -933,6 +977,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        let appearance = AppearanceMode(rawValue: UserDefaults.standard.string(forKey: "appAppearance") ?? "") ?? .dark
+        NSApp.appearance = appearance.nativeAppearance
         if CommandLine.arguments.contains("--test-background-reopen") {
             Task { @MainActor in await RuntimeDiagnostics.testBackgroundReopen() }
             return
@@ -979,6 +1025,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 struct SettingsView: View {
     @ObservedObject var store: LaterStore
+    @AppStorage("appAppearance") private var appearanceRawValue = AppearanceMode.dark.rawValue
 
     var body: some View {
         Form {
@@ -1016,6 +1063,7 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .padding(18)
+        .preferredColorScheme((AppearanceMode(rawValue: appearanceRawValue) ?? .dark).colorScheme)
     }
 }
 

@@ -54,21 +54,21 @@ private struct ParkingBay: View {
 
     var body: some View {
         RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .fill(Color.white.opacity(empty ? 0.008 : 0.015))
+            .fill(Color.laterInk.opacity(empty ? 0.008 : 0.015))
             .overlay {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(Color.white.opacity(empty ? 0.09 : 0.17), lineWidth: 1)
+                    .strokeBorder(Color.laterInk.opacity(empty ? 0.09 : 0.17), lineWidth: 1)
             }
             .overlay {
                 if empty {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.12), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                        .strokeBorder(Color.laterInk.opacity(0.12), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
                         .padding(6)
                     Text("P")
                         .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.white.opacity(0.20))
+                        .foregroundStyle(Color.laterInk.opacity(0.20))
                         .frame(width: 24, height: 24)
-                        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.white.opacity(0.16)))
+                        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.laterInk.opacity(0.16)))
                 }
             }
             .overlay(alignment: .top) { ParkingStop().offset(y: -3) }
@@ -203,7 +203,7 @@ struct QueueView: View {
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(hovered || dragging ? Color.laterAccent.opacity(0.65) : Color.white.opacity(0.08), lineWidth: 1)
+                        .strokeBorder(hovered || dragging ? Color.laterAccent.opacity(0.65) : Color.laterInk.opacity(0.08), lineWidth: 1)
                 }
                 .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: hovered)

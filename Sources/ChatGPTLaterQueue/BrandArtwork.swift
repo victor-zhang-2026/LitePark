@@ -7,6 +7,12 @@ enum BrandArtwork {
     static let ink = NSColor(srgbRed: 1, green: 249 / 255, blue: 241 / 255, alpha: 1)
     static let face = NSColor(srgbRed: 105 / 255, green: 69 / 255, blue: 47 / 255, alpha: 1)
 
+    /// The panel uses the original mark on transparency so its surface follows the theme.
+    static let headerImage = NSImage(size: NSSize(width: 30, height: 30), flipped: false) { bounds in
+        drawAppMark(in: bounds)
+        return true
+    }
+
     private static func rgb(_ hex: UInt32) -> NSColor {
         NSColor(srgbRed: CGFloat((hex >> 16) & 255) / 255,
                 green: CGFloat((hex >> 8) & 255) / 255,
