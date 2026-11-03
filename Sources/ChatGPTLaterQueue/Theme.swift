@@ -20,7 +20,7 @@ extension Color {
 
     static let laterAccent = Color(nsColor: BrandArtwork.primary)
     static let laterSurface = adaptive(
-        light: NSColor(calibratedWhite: 0.97, alpha: 1),
+        light: .white,
         dark: NSColor(red: 28 / 255, green: 28 / 255, blue: 30 / 255, alpha: 1))
     static let laterElevated = adaptive(
         light: .white,
