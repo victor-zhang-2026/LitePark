@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.2 — 2026-11-04
+
+- Give the expanded floating panel a native window shadow in both appearance modes.
+- Refine the light-mode outer border to a subtle 0.5pt line at 10% opacity. Dark-mode styling and all interactions remain unchanged.
+
 ## 1.1.0 — 2026-11-02
 
 - Replace the vertical queue with a compact two-column Parking Board. Cards have individual bay outlines, small striped stops, and up to two empty-space previews.

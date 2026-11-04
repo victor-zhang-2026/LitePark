@@ -645,10 +645,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
 
         panel = LaterFloatingPanel(contentRect: NSRect(x: 0, y: 0, width: 420, height: 190), styleMask: [.borderless], backing: .buffered, defer: false)
         prepare(panel)
-        // The SwiftUI surface owns the single restrained shadow. Keeping the
-        // native NSPanel shadow off avoids the duplicate outer frame seen below
-        // the queue on click-open.
-        panel.hasShadow = false
+        panel.hasShadow = true
         panel.delegate = self
         panel.contentView = NSHostingView(rootView: FloatingPanelView(coordinator: coordinator, controller: self, onSettings: onSettings))
         panel.contentView?.autoresizingMask = [.width, .height]
@@ -963,7 +960,7 @@ struct FloatingPanelView: View {
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.laterSeparator, lineWidth: 1)
+                .stroke(appearanceMode == .light ? Color.black.opacity(0.10) : Color.laterSeparator, lineWidth: appearanceMode == .light ? 0.5 : 1)
         }
         .frame(width: 420, alignment: .top)
     }
