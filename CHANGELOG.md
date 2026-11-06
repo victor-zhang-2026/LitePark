@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.3 — 2026-11-06
+
+- Reopen a saved conversation when ChatGPT's whole sidebar is hidden by showing the sidebar once, selecting the unique matching chat, and restoring the hidden state.
+- Keep the existing exact-title guard and final conversation-title verification. Collapsed project or chat groups still need manual expansion.
+
 ## 1.1.2 — 2026-11-04
 
 - Give the expanded floating panel a native window shadow in both appearance modes.

@@ -40,7 +40,7 @@ LitePark uses macOS Accessibility to read the active conversation title and acti
 
 ## Installation
 
-1. Download `LitePark-v1.1.2-macOS.zip` from the [v1.1.2 release](https://github.com/victor-zhang-2026/LitePark/releases/tag/v1.1.2).
+1. Download `LitePark-v1.1.3-macOS.zip` from the [v1.1.3 release](https://github.com/victor-zhang-2026/LitePark/releases/tag/v1.1.3).
 2. Unzip it and move `LitePark.app` to Applications.
 3. Right-click LitePark and choose **Open** the first time.
 4. Grant Accessibility access when macOS asks. You can also enable it in **System Settings → Privacy & Security → Accessibility**.
@@ -73,7 +73,7 @@ Different conversations with the same title are treated as ambiguous. This mecha
 
 ### Sidebar visibility
 
-Automatic reopening requires one exact matching conversation to be exposed in ChatGPT Desktop's current sidebar accessibility tree. Expand the relevant project or chat group before opening a parked conversation. LitePark keeps the item when it cannot safely identify one unique match.
+Automatic reopening requires one exact matching conversation in ChatGPT Desktop's sidebar accessibility tree. If the whole sidebar is hidden, LitePark opens it once to find the conversation and then tries to restore the hidden state. Expand a collapsed project or chat group manually before opening its parked conversation. LitePark keeps the item when it cannot safely identify one unique match.
 
 ## Privacy
 

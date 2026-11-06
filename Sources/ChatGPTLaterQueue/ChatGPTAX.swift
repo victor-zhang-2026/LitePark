@@ -183,6 +183,44 @@ enum ChatGPTAX {
         }
     }
 
+    static func showSidebarButton(_ window: AXUIElement) -> AXUIElement? {
+        let showLabels = ["Show sidebar", "Open sidebar", "展开边栏", "显示边栏"]
+        let candidates = allNodes(window).filter { node in
+            guard role(node) == kAXButtonRole else { return false }
+            let name = label(node)
+            guard showLabels.contains(name) ||
+                  (name == "Toggle sidebar" && copy(node, kAXExpandedAttribute) as? Bool == false) else { return false }
+            var ancestor = copy(node, kAXParentAttribute)
+            for _ in 0..<10 {
+                guard let value = ancestor else { break }
+                let parent = value as! AXUIElement
+                if string(parent, kAXSubroleAttribute) == "AXLandmarkMain" { return false }
+                ancestor = copy(parent, kAXParentAttribute)
+            }
+            return true
+        }
+        return candidates.count == 1 ? candidates[0] : nil
+    }
+
+    static func hideSidebarButton(_ window: AXUIElement) -> AXUIElement? {
+        let hideLabels = ["Hide sidebar", "Close sidebar", "Collapse sidebar", "收起边栏", "隐藏边栏"]
+        let candidates = allNodes(window).filter { node in
+            guard role(node) == kAXButtonRole else { return false }
+            let name = label(node)
+            guard hideLabels.contains(name) ||
+                  (name == "Toggle sidebar" && copy(node, kAXExpandedAttribute) as? Bool == true) else { return false }
+            var ancestor = copy(node, kAXParentAttribute)
+            for _ in 0..<10 {
+                guard let value = ancestor else { break }
+                let parent = value as! AXUIElement
+                if string(parent, kAXSubroleAttribute) == "AXLandmarkMain" { return false }
+                ancestor = copy(parent, kAXParentAttribute)
+            }
+            return true
+        }
+        return candidates.count == 1 ? candidates[0] : nil
+    }
+
     @MainActor static func waitUntil(_ seconds: TimeInterval, _ predicate: () -> Bool) async -> Bool {
         let deadline = Date().addingTimeInterval(seconds)
         repeat {
@@ -196,7 +234,37 @@ enum ChatGPTAX {
         let (app, root) = try root()
         let window = try await readyWindow(app, root: root)
         let expected = normalized(title)
-        let matches = sidebarButtons(window, title: expected)
+        var openedSidebar = false
+        defer {
+            if openedSidebar, app.isActive, let freshWindow = try? mainWindow(root),
+               let hide = hideSidebarButton(freshWindow) {
+                var actions: CFArray?
+                AXUIElementCopyActionNames(hide, &actions)
+                if (actions as? [String] ?? []).contains(kAXPressAction) {
+                    let result = AXUIElementPerformAction(hide, kAXPressAction as CFString)
+                    RuntimeLog.write("reopen restoreSidebar status=\(result.rawValue)")
+                } else {
+                    RuntimeLog.write("reopen restoreSidebar actionUnavailable")
+                }
+            }
+        }
+        var matches = sidebarButtons(window, title: expected)
+        if matches.isEmpty, let show = showSidebarButton(window) {
+            var actions: CFArray?
+            AXUIElementCopyActionNames(show, &actions)
+            if (actions as? [String] ?? []).contains(kAXPressAction) {
+                let result = AXUIElementPerformAction(show, kAXPressAction as CFString)
+                RuntimeLog.write("reopen showSidebar status=\(result.rawValue)")
+                if result == .success {
+                    openedSidebar = true
+                    _ = await waitUntil(1, {
+                        guard let freshWindow = try? mainWindow(root) else { return false }
+                        return !sidebarButtons(freshWindow, title: expected).isEmpty
+                    })
+                    matches = sidebarButtons(try mainWindow(root), title: expected)
+                }
+            }
+        }
         RuntimeLog.write("reopen trusted=true sidebarMatches=\(matches.count)")
         guard !matches.isEmpty else { throw LaterError.sidebarUnavailable }
         guard matches.count == 1 else { throw LaterError.sidebarAmbiguous }
