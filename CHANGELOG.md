@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.4 — 2026-11-11
+
+- Give the appearance, settings and close controls a larger hit area, hover background and short text hint.
+- Keep the Parking Board, queue data and conversation reopening behavior unchanged.
+
 ## 1.1.3 — 2026-11-06
 
 - Reopen a saved conversation when ChatGPT's whole sidebar is hidden by showing the sidebar once, selecting the unique matching chat, and restoring the hidden state.

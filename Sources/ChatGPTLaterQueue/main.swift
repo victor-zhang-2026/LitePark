@@ -922,25 +922,21 @@ struct FloatingPanelView: View {
                     }
                 } label: {
                     Image(systemName: appearanceMode.symbolName)
-                        .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(Color.laterInk.opacity(0.78))
-                        .frame(width: 28, height: 28)
-                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .help(appearanceMode.toggleLabel)
-                .accessibilityLabel(appearanceMode.toggleLabel)
+                .buttonStyle(ParkHeaderButtonStyle())
+                .parkFastHelp(appearanceMode.toggleLabel)
                 Button(action: onSettings) {
                     Image(systemName: "gearshape")
                         .foregroundStyle(Color.laterInk.opacity(0.78))
-                        .accessibilityLabel("Settings")
-                }.buttonStyle(.plain)
+                }.buttonStyle(ParkHeaderButtonStyle()).parkFastHelp("Settings")
                 Button { coordinator.collapse() } label: {
                     Image(systemName: "xmark").foregroundStyle(Color.laterInk.opacity(0.78))
-                }.buttonStyle(.plain).accessibilityLabel("Close LitePark")
+                }.buttonStyle(ParkHeaderButtonStyle(hoverColor: .red)).parkFastHelp("Close LitePark", horizontalOffset: -30)
             }
             .foregroundStyle(Color.laterInk)
             .padding(.horizontal, 18).frame(height: 54)
+            .zIndex(10)
         .background(Color.laterElevated)
         QueueView(coordinator: coordinator)
         }
@@ -963,6 +959,71 @@ struct FloatingPanelView: View {
                 .stroke(appearanceMode == .light ? Color.black.opacity(0.10) : Color.laterSeparator, lineWidth: appearanceMode == .light ? 0.5 : 1)
         }
         .frame(width: 420, alignment: .top)
+    }
+}
+
+private struct ParkHeaderButtonStyle: ButtonStyle {
+    var hoverColor: Color = .primary
+    func makeBody(configuration: Configuration) -> some View {
+        ParkHeaderButtonBody(configuration: configuration, hoverColor: hoverColor)
+    }
+    private struct ParkHeaderButtonBody: View {
+        let configuration: Configuration
+        let hoverColor: Color
+        @State private var hovering = false
+        var body: some View {
+            configuration.label
+                .symbolRenderingMode(.monochrome)
+                .font(.system(size: 13, weight: .medium))
+                .frame(width: 28, height: 28)
+                .background(hoverColor.opacity(configuration.isPressed ? 0.12 : hovering ? 0.08 : 0), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                .contentShape(Rectangle())
+                .onHover { hovering = $0 }
+        }
+    }
+}
+
+private struct ParkFastHelpModifier: ViewModifier {
+    let text: String
+    let horizontalOffset: CGFloat
+    @State private var isPresented = false
+    @State private var hoverToken = UUID()
+    func body(content: Content) -> some View {
+        content
+            .accessibilityLabel(text)
+            .onHover { hovering in
+                let token = UUID()
+                hoverToken = token
+                if hovering {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
+                        guard hoverToken == token else { return }
+                        isPresented = true
+                    }
+                } else { isPresented = false }
+            }
+            .overlay(alignment: .bottom) {
+                if isPresented {
+                    Text(text)
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(Color.laterInk)
+                        .lineLimit(1)
+                        .fixedSize()
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).stroke(Color.laterSeparator, lineWidth: 0.5))
+                        .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+                        .offset(x: horizontalOffset, y: 28)
+                        .allowsHitTesting(false)
+                }
+            }
+            .zIndex(isPresented ? 20 : 0)
+    }
+}
+
+private extension View {
+    func parkFastHelp(_ text: String, horizontalOffset: CGFloat = 0) -> some View {
+        modifier(ParkFastHelpModifier(text: text, horizontalOffset: horizontalOffset))
     }
 }
 

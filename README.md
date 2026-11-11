@@ -28,6 +28,7 @@ Use a global shortcut to park the conversation currently open in ChatGPT. A comp
 - Mark a conversation done to remove it from the board
 - Move the floating trigger anywhere on your displays
 - Keep queue data locally on your Mac
+- See a hover background and text hint on the appearance, settings and close controls
 
 ## Requirements
 
@@ -40,7 +41,7 @@ LitePark uses macOS Accessibility to read the active conversation title and acti
 
 ## Installation
 
-1. Download `LitePark-v1.1.3-macOS.zip` from the [v1.1.3 release](https://github.com/victor-zhang-2026/LitePark/releases/tag/v1.1.3).
+1. Download `LitePark-v1.1.4-macOS.zip` from the [v1.1.4 release](https://github.com/victor-zhang-2026/LitePark/releases/tag/v1.1.4).
 2. Unzip it and move `LitePark.app` to Applications.
 3. Right-click LitePark and choose **Open** the first time.
 4. Grant Accessibility access when macOS asks. You can also enable it in **System Settings → Privacy & Security → Accessibility**.
