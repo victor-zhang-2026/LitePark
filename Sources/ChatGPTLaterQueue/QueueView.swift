@@ -83,6 +83,7 @@ struct QueueView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var dragStartFrame: CGRect?
     @State private var dragTranslation = CGSize.zero
+    @State private var hoveredHandleID: UUID?
 
     init(coordinator: QueueCoordinator) {
         self.coordinator = coordinator
@@ -107,25 +108,35 @@ struct QueueView: View {
             }.frame(maxWidth: .infinity).frame(height: 118)
         } else {
             ScrollView(.vertical) {
-                ParkingGrid {
-                    ForEach(coordinator.reorderPreview ?? store.items) { item in
-                        card(item)
-                            .opacity(coordinator.draggingID == item.id ? 0.15 : 1)
-                            .background(GeometryReader { proxy in
-                                Color.clear.preference(key: QueueRowFrames.self,
-                                    value: [item.id: proxy.frame(in: .named("laterQueue"))])
-                            })
+                ZStack(alignment: .topLeading) {
+                    ParkingGrid {
+                        ForEach(0..<(store.count + emptySpaces), id: \.self) { index in
+                            ParkingBay(empty: index >= store.count)
+                        }
                     }
-                    ForEach(0..<emptySpaces, id: \.self) { _ in
-                        ParkingBay(empty: true)
+                    .padding(14)
+
+                    ParkingGrid {
+                        ForEach(coordinator.reorderPreview ?? store.items) { item in
+                            cardContents(item)
+                                .opacity(coordinator.draggingID == item.id ? 0.15 : 1)
+                                .zIndex(hoveredHandleID == item.id ? 1 : 0)
+                                .background(GeometryReader { proxy in
+                                    Color.clear.preference(key: QueueRowFrames.self,
+                                        value: [item.id: proxy.frame(in: .named("laterQueue"))])
+                                })
+                        }
+                        ForEach(0..<emptySpaces, id: \.self) { _ in
+                            Color.clear.allowsHitTesting(false)
+                        }
                     }
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: coordinator.reorderPreview?.map(\.id))
+                    .padding(14)
                 }
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: coordinator.reorderPreview?.map(\.id))
-                .padding(14)
                 .overlay(alignment: .topLeading) {
                     if let id = coordinator.draggingID,
                        let item = store.items.first(where: { $0.id == id }), let frame = dragStartFrame {
-                        card(item)
+                        cardContents(item)
                             .frame(width: frame.width, height: frame.height)
                             .shadow(color: .black.opacity(0.25), radius: 5, y: 2)
                             .position(x: frame.midX + dragTranslation.width, y: frame.midY + dragTranslation.height)
@@ -143,7 +154,7 @@ struct QueueView: View {
         }
     }
 
-    private func card(_ item: LaterItem) -> some View {
+    private func cardContents(_ item: LaterItem) -> some View {
         let hovered = coordinator.hoveredRowID == item.id && coordinator.draggingID == nil
         let dragging = coordinator.draggingID == item.id
         return Button { coordinator.open(item) } label: {
@@ -173,7 +184,23 @@ struct QueueView: View {
                 .frame(width: 30, height: 30).contentShape(Rectangle())
                 .opacity((hovered || dragging) ? 1 : 0)
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovered)
-                .help("Drag to reorder").accessibilityLabel("Drag to reorder")
+                .accessibilityLabel("Drag to reorder")
+                .onHover { inside in hoveredHandleID = inside ? item.id : nil }
+                .overlay(alignment: .trailing) {
+                    if hoveredHandleID == item.id && !dragging {
+                        Text("Drag to reorder")
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(Color.laterInk)
+                            .fixedSize()
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 4)
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 5))
+                            .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.laterSeparator, lineWidth: 0.5))
+                            .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+                            .offset(x: -32)
+                            .allowsHitTesting(false)
+                    }
+                }
                 .highPriorityGesture(
                     DragGesture(minimumDistance: 3, coordinateSpace: .named("laterQueue"))
                         .onChanged { value in
@@ -210,7 +237,6 @@ struct QueueView: View {
                 .allowsHitTesting(false)
         }
         .padding(6)
-        .background { ParkingBay() }
         .onHover { inside in
             if inside { coordinator.hoveredRowID = item.id }
             else if coordinator.hoveredRowID == item.id { coordinator.hoveredRowID = nil }

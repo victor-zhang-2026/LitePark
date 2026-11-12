@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.5 — 2026-11-12
+
+- Keep parking bays and striped stops fixed while conversation cards move during drag reorder.
+- Show the drag hint inside the floating panel so it stays above the panel surface.
+
 ## 1.1.4 — 2026-11-11
 
 - Give the appearance, settings and close controls a larger hit area, hover background and short text hint.
