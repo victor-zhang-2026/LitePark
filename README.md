@@ -6,7 +6,7 @@
 
 <p align="center"><strong>Park it now. Pick it up later.</strong></p>
 
-<p align="center">A lightweight macOS companion for parking ChatGPT conversations you want to return to later.</p>
+<p align="center">A lightweight macOS companion for parking AI conversations you want to return to later.</p>
 
 <p align="center">
   <img src="Screenshots/litepark-demo.png" width="420" alt="LitePark Parking Board with fictional demo conversations">
@@ -14,17 +14,17 @@
 
 ## What is LitePark?
 
-ChatGPT history is useful for finding old conversations, but it does not express a simple intention: “I cannot deal with this now, but I want to come back to it.” LitePark adds that small workflow to the ChatGPT desktop experience.
+ChatGPT history is useful for finding old conversations, but it does not express a simple intention: “I cannot deal with this now, but I want to come back to it.” LitePark adds that small workflow to five Mac apps: ChatGPT, Doubao, Doubao Work, WorkBuddy and Qwen Work.
 
-Use a global shortcut to park the conversation currently open in ChatGPT. A compact, two-column Parking Board gives each saved conversation its own space until you open it again or mark it done.
+Use a global shortcut to park the conversation currently open in a supported app. A compact, two-column Parking Board gives each saved conversation its own space until you open it again or mark it done.
 
 ## Features
 
-- Add the current ChatGPT conversation with `⌃⌥L`
+- Add the frontmost supported conversation with `⌃⌥L` or `⌃⌥⌘L`
 - Open or close the Parking Board with `⌃⌥K`
 - Reorder cards across rows and columns using the handle shown on hover
 - Set Card Limit to 6, 9, 12, 16, or 20 cards; the default is 12
-- Open a saved conversation directly in ChatGPT Desktop
+- Open a saved conversation in its original client or through its saved conversation link
 - Mark a conversation done to remove it from the board
 - Move the floating trigger anywhere on your displays
 - Keep queue data locally on your Mac
@@ -33,28 +33,27 @@ Use a global shortcut to park the conversation currently open in ChatGPT. A comp
 ## Requirements
 
 - macOS 13 or later
-- ChatGPT Desktop for macOS
-- ChatGPT Desktop must be running while adding or opening conversations
+- At least one supported Mac client: ChatGPT, Doubao (豆包), Doubao Work (豆包工作), WorkBuddy or Qwen Work (千问办公)
 - Accessibility permission for LitePark
 
-LitePark uses macOS Accessibility to read the active conversation title and activate matching conversations in ChatGPT's visible sidebar. It does not read or store conversation contents.
+LitePark uses macOS Accessibility to identify the foreground conversation. Depending on the client, it saves a title, a conversation URL or a native session link. WorkBuddy can resolve the visible title against its local session index.
 
 ## Installation
 
-1. Download `LitePark-v1.1.5-macOS.zip` from the [v1.1.5 release](https://github.com/victor-zhang-2026/LitePark/releases/tag/v1.1.5).
+1. Download `LitePark-v1.2.0-macOS.zip` from the [v1.2.0 release](https://github.com/victor-zhang-2026/LitePark/releases/tag/v1.2.0).
 2. Unzip it and move `LitePark.app` to Applications.
 3. Right-click LitePark and choose **Open** the first time.
 4. Grant Accessibility access when macOS asks. You can also enable it in **System Settings → Privacy & Security → Accessibility**.
-5. Start ChatGPT Desktop before using LitePark.
+5. Open a conversation in a supported client.
 
 The public build is not notarized with Apple. macOS may show an unidentified developer warning. Use right-click → **Open**, or choose **Open Anyway** in **System Settings → Privacy & Security** after the first blocked launch.
 
 ## Usage
 
-1. Open a conversation in ChatGPT Desktop.
+1. Open a conversation in a supported client.
 2. Press `⌃⌥L` to add it to LitePark.
 3. Hover over or click the floating LitePark trigger to show the board.
-4. Click a conversation card to open it in ChatGPT.
+4. Click a conversation card to return to the conversation.
 5. Hover a card to reveal its drag handle, or use the circle at the top left to mark it done.
 6. Use **Settings → Card Limit** to adjust capacity. The header shows saved cards / capacity.
 
@@ -64,7 +63,7 @@ When the board is full, new additions are paused and a brief “Card limit reach
 
 ### Conversation names
 
-LitePark identifies conversations by title. For the most reliable workflow:
+Title-based cards (including ChatGPT and Qwen Work) rely on a unique title. For the most reliable workflow:
 
 1. Give the conversation a useful name in ChatGPT first.
 2. Add it to LitePark.
@@ -74,11 +73,11 @@ Different conversations with the same title are treated as ambiguous. This mecha
 
 ### Sidebar visibility
 
-Automatic reopening requires one exact matching conversation in ChatGPT Desktop's sidebar accessibility tree. If the whole sidebar is hidden, LitePark opens it once to find the conversation and then tries to restore the hidden state. Expand a collapsed project or chat group manually before opening its parked conversation. LitePark keeps the item when it cannot safely identify one unique match.
+Automatic reopening requires one exact matching conversation in ChatGPT Desktop's sidebar accessibility tree. If the whole sidebar is hidden, LitePark opens it once to find the conversation and then tries to restore the hidden state. LitePark can load additional sidebar rows and expand project groups to locate a match. LitePark keeps the item when it cannot safely identify one unique match.
 
 ## Privacy
 
-LitePark stores only the metadata required for its local queue: a local item ID, conversation title, added time, and manual order. It stores no prompts, responses, account data, screenshots, analytics, or telemetry. Nothing is uploaded by LitePark.
+LitePark stores only the metadata required for its local queue: a local item ID, provider, conversation title, reopening target, added time and manual order. It stores no prompts, responses, account data, screenshots, analytics, or telemetry. Nothing is uploaded by LitePark.
 
 All screenshots in this repository use fictional demo conversation names.
 

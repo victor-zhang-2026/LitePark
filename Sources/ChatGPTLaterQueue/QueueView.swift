@@ -159,7 +159,13 @@ struct QueueView: View {
         let dragging = coordinator.draggingID == item.id
         return Button { coordinator.open(item) } label: {
             VStack(alignment: .leading, spacing: 4) {
-                Spacer().frame(height: 22)
+                Text(item.source.displayName)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .padding(.trailing, 26)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .frame(height: 22)
                 Text(item.title)
                     .font(.system(size: 14, weight: .medium)).foregroundStyle(.primary)
                     .lineLimit(2)
@@ -169,7 +175,7 @@ struct QueueView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(RoundedRectangle(cornerRadius: 12))
         }
-        .buttonStyle(.plain).accessibilityLabel("Open \(item.title)")
+        .buttonStyle(.plain).accessibilityLabel("Open \(item.title), \(item.source.displayName)")
         .overlay(alignment: .topLeading) {
             Button { coordinator.done(item) } label: {
                 Image(systemName: "circle").font(.system(size: 18)).foregroundStyle(Color.laterAccent)

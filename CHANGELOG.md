@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.0 — 2026-11-18
+
+Park conversations from ChatGPT, Doubao, Doubao Work, WorkBuddy and Qwen Work on one macOS Parking Board. Each card shows its source and opens the corresponding conversation. Add follows the foreground app. Existing ChatGPT cards retain their order. ChatGPT reopening now handles more sidebar layouts, pagination and collapsed projects.
+
 ## 1.1.5 — 2026-11-12
 
 - Keep parking bays and striped stops fixed while conversation cards move during drag reorder.

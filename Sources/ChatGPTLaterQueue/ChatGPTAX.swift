@@ -162,29 +162,41 @@ enum ChatGPTAX {
         return title
     }
 
+    static func sidebarControls(_ window: AXUIElement, matching predicate: (AXUIElement) -> Bool) -> [AXUIElement] {
+        // ChatGPT renders both button and link rows. Search the navigation tree
+        // independently of the size of the conversation in the main pane.
+        var matches: [AXUIElement] = []
+        var pending = [(window, false)]
+        while let (node, insideSidebar) = pending.popLast() {
+            let kind = role(node)
+            let subrole = string(node, kAXSubroleAttribute)
+            let classes = copy(node, "AXDOMClassList") as? [String] ?? []
+            let list = kind == kAXListRole ? (string(node, kAXDescriptionAttribute) ?? label(node)) : ""
+            let navigation = insideSidebar || subrole == "AXLandmarkNavigation" ||
+                classes.contains("sidebar-item") || list == "Chats" || list.hasPrefix("Chats in ") ||
+                list == "聊天" || list == "对话" || list.hasSuffix("中的聊天")
+            if !navigation && subrole == "AXLandmarkMain" && !children(node).contains(where: { string($0, kAXSubroleAttribute) == "AXLandmarkNavigation" }) { continue }
+            if navigation && [kAXButtonRole as String, "AXLink"].contains(kind),
+               predicate(node) {
+                matches.append(node)
+                continue
+            }
+            pending.append(contentsOf: children(node).map { ($0, navigation) })
+        }
+        return matches
+    }
+
     static func sidebarButtons(_ window: AXUIElement, title: String) -> [AXUIElement] {
         let expected = normalized(title)
-        return allNodes(window).filter { node in
-            guard role(node) == kAXButtonRole else { return false }
-            // Match the observed ChatGPT sidebar row, excluding the same title
-            // in the conversation header and buttons inside message content.
-            let classes = copy(node, "AXDOMClassList") as? [String] ?? []
-            var isSidebar = classes.contains("sidebar-item")
-            var ancestor = copy(node, kAXParentAttribute)
-            for _ in 0..<8 {
-                guard let value = ancestor else { break }
-                let parent = value as! AXUIElement
-                let description = string(parent, kAXDescriptionAttribute) ?? ""
-                if role(parent) == kAXListRole && (description == "Chats" || description.hasPrefix("Chats in ")) { isSidebar = true; break }
-                if string(parent, kAXSubroleAttribute) == "AXLandmarkMain" { return false }
-                ancestor = copy(parent, kAXParentAttribute)
-            }
-            return isSidebar && textValues(node).contains(where: { normalized($0) == expected })
-        }
+        return sidebarControls(window) { textValues($0).contains { normalized($0) == expected } }
+    }
+
+    private static func controlNames(_ node: AXUIElement) -> [String] {
+        [kAXTitleAttribute, kAXDescriptionAttribute, kAXHelpAttribute].compactMap { string(node, $0) }
     }
 
     static func showSidebarButton(_ window: AXUIElement) -> AXUIElement? {
-        let showLabels = ["Show sidebar", "Open sidebar", "展开边栏", "显示边栏"]
+        let showLabels = ["Show sidebar", "Open sidebar", "展开边栏", "显示边栏", "展开侧边栏", "打开侧边栏", "显示侧边栏", "打开边栏"]
         let candidates = allNodes(window).filter { node in
             guard role(node) == kAXButtonRole else { return false }
             let name = label(node)
@@ -203,7 +215,7 @@ enum ChatGPTAX {
     }
 
     static func hideSidebarButton(_ window: AXUIElement) -> AXUIElement? {
-        let hideLabels = ["Hide sidebar", "Close sidebar", "Collapse sidebar", "收起边栏", "隐藏边栏"]
+        let hideLabels = ["Hide sidebar", "Close sidebar", "Collapse sidebar", "收起边栏", "隐藏边栏", "收起侧边栏", "关闭侧边栏", "隐藏侧边栏"]
         let candidates = allNodes(window).filter { node in
             guard role(node) == kAXButtonRole else { return false }
             let name = label(node)
@@ -234,8 +246,16 @@ enum ChatGPTAX {
         let (app, root) = try root()
         let window = try await readyWindow(app, root: root)
         let expected = normalized(title)
+        if app.isActive, (try? currentTitle(window)) == expected { return }
+        var expandedProjects: [String] = []
         var openedSidebar = false
         defer {
+            if !expandedProjects.isEmpty, app.isActive, let current = try? mainWindow(root) {
+                for name in expandedProjects.reversed() {
+                    let controls = sidebarControls(current) { controlNames($0).contains(name) }
+                    if controls.count == 1 { _ = AXUIElementPerformAction(controls[0], kAXPressAction as CFString) }
+                }
+            }
             if openedSidebar, app.isActive, let freshWindow = try? mainWindow(root),
                let hide = hideSidebarButton(freshWindow) {
                 var actions: CFArray?
@@ -263,6 +283,46 @@ enum ChatGPTAX {
                     })
                     matches = sidebarButtons(try mainWindow(root), title: expected)
                 }
+            }
+        }
+        if matches.isEmpty {
+            // Sidebar rows can arrive after activation or sidebar expansion.
+            _ = await waitUntil(2, {
+                guard app.isActive, let fresh = try? mainWindow(root) else { return false }
+                matches = sidebarButtons(fresh, title: expected)
+                return !matches.isEmpty
+            })
+        }
+        if matches.isEmpty, app.isActive {
+            // Older chats are mounted only after the sidebar's pagination control is pressed.
+            let more = ["Show more", "Show more chats", "显示更多", "查看更多", "显示更多聊天"]
+            for _ in 0..<12 {
+                guard app.isActive, let current = try? mainWindow(root) else { break }
+                let buttons = sidebarControls(current) { more.contains(label($0)) }
+                guard buttons.count == 1, AXUIElementPerformAction(buttons[0], kAXPressAction as CFString) == .success else { break }
+                try await Task.sleep(nanoseconds: 200_000_000)
+                matches = sidebarButtons(try mainWindow(root), title: expected)
+                if !matches.isEmpty { break }
+            }
+        }
+        if matches.isEmpty, app.isActive {
+            let pairs = [("Expand ", "Collapse "), ("展开", "收起")]
+            let current = try mainWindow(root)
+            let projects = sidebarControls(current) { node in
+                controlNames(node).contains { name in pairs.contains { name.hasPrefix($0.0) } }
+            }
+            for project in projects {
+                guard app.isActive else { break }
+                guard let name = controlNames(project).first(where: { n in pairs.contains { n.hasPrefix($0.0) } }),
+                      let pair = pairs.first(where: { name.hasPrefix($0.0) }),
+                      AXUIElementPerformAction(project, kAXPressAction as CFString) == .success else { continue }
+                expandedProjects.append(pair.1 + String(name.dropFirst(pair.0.count)))
+                _ = await waitUntil(0.7, {
+                    guard app.isActive, let fresh = try? mainWindow(root) else { return false }
+                    matches = sidebarButtons(fresh, title: expected)
+                    return !matches.isEmpty
+                })
+                if !matches.isEmpty { break }
             }
         }
         RuntimeLog.write("reopen trusted=true sidebarMatches=\(matches.count)")

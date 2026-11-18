@@ -11,6 +11,27 @@ struct LaterItem: Identifiable, Codable, Equatable {
     var title: String
     var addedAt: Date
     var order: Int
+    let source: ConversationSource
+    let target: String
+
+    init(id: UUID, title: String, addedAt: Date, order: Int, source: ConversationSource = .chatGPT, target: String? = nil) {
+        self.id = id
+        self.title = title
+        self.addedAt = addedAt
+        self.order = order
+        self.source = source
+        self.target = target ?? title
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        title = try values.decode(String.self, forKey: .title)
+        addedAt = try values.decode(Date.self, forKey: .addedAt)
+        order = try values.decode(Int.self, forKey: .order)
+        source = try values.decodeIfPresent(ConversationSource.self, forKey: .source) ?? .chatGPT
+        target = try values.decodeIfPresent(String.self, forKey: .target) ?? title
+    }
 }
 
 enum LaterError: LocalizedError {
@@ -59,13 +80,13 @@ final class LaterStore: ObservableObject {
     var isFull: Bool { count >= cardLimit }
 
     func contains(title: String) -> Bool {
-        items.contains { $0.title == title }
+        items.contains { $0.source == .chatGPT && $0.title == title }
     }
 
     @discardableResult
-    func add(title: String) -> Bool {
-        guard !contains(title: title), !isFull else { return false }
-        let item = LaterItem(id: UUID(), title: title, addedAt: Date(), order: 0)
+    func add(title: String, source: ConversationSource = .chatGPT, target: String? = nil) -> Bool {
+        guard !items.contains(where: { $0.source == source && $0.target == (target ?? title) }), !isFull else { return false }
+        let item = LaterItem(id: UUID(), title: title, addedAt: Date(), order: 0, source: source, target: target)
         items.insert(item, at: 0)
         normalize()
         save()
@@ -203,35 +224,42 @@ final class QueueCoordinator: ObservableObject {
         dragSlots = []
     }
 
-    private func showLimitFeedback() {
+    @Published private(set) var feedback: String?
+
+    private func showLimitFeedback() { showFeedback("Card limit reached.") }
+
+    private func showFeedback(_ message: String) {
         limitFeedbackWork?.cancel()
-        limitReached = true
+        feedback = message
+        limitReached = message == "Card limit reached."
         islandState = .expanded
-        let work = DispatchWorkItem { [weak self] in self?.limitReached = false }
+        let work = DispatchWorkItem { [weak self] in self?.limitReached = false; self?.feedback = nil }
         limitFeedbackWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
     }
 
     private var isCapturing = false
 
-    func addCurrent() {
+    func addCurrent(app: NSRunningApplication? = NSWorkspace.shared.frontmostApplication) {
         guard !isCapturing else { return }
-        guard !store.isFull else { showLimitFeedback(); return }
+        guard let app, let source = ConversationSource(app: app) else {
+            showFeedback("Open a supported conversation app first.")
+            return
+        }
+        guard source != .chatGPT || !store.isFull else { showLimitFeedback(); return }
         isCapturing = true
         Task { @MainActor in
             defer { isCapturing = false }
             do {
-                let title = try await ChatGPTAX.captureTitleForAdd()
-                if store.contains(title: title) {
-                    RuntimeLog.write("add duplicate ignored")
-                } else {
-                    if store.add(title: title) {
-                        RuntimeLog.write("add saved")
-                    } else if store.isFull {
-                        showLimitFeedback()
-                    }
+                guard NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier else { return }
+                let captured = try await source.capture(app)
+                if store.items.contains(where: { $0.source == source && $0.target == captured.target }) {
+                    if source != .chatGPT { showFeedback("Already in LitePark") }
+                } else if !store.add(title: captured.title, source: source, target: captured.target) {
+                    showLimitFeedback()
                 }
             } catch {
+                if source != .chatGPT { showFeedback(error.localizedDescription) }
                 RuntimeLog.write("add failed: \(error.localizedDescription)")
             }
         }
@@ -246,11 +274,12 @@ final class QueueCoordinator: ObservableObject {
         Task { @MainActor in
             defer { isOpening = false }
             do {
-                try await ChatGPTAX.reopen(title: item.title)
+                try await item.source.reopen(item.target)
                 islandState = .idle
-                RuntimeLog.write("open OPENED_AND_VERIFIED")
+                RuntimeLog.write("open completed")
             } catch {
                 islandState = .expanded
+                showFeedback(error.localizedDescription)
                 RuntimeLog.write("open failed: \(error.localizedDescription)")
             }
         }
@@ -288,16 +317,17 @@ final class QueueCoordinator: ObservableObject {
 enum IslandState: Equatable { case idle, expanded }
 
 final class GlobalShortcutMonitor {
+    private var commandAddRef: EventHotKeyRef?
     private var addRef: EventHotKeyRef?
     private var toggleRef: EventHotKeyRef?
     private var eventHandler: EventHandlerRef?
     private var globalMonitor: Any?
     private var localMonitor: Any?
     private var lastFire = Date.distantPast
-    private let add: () -> Void
+    private let add: (NSRunningApplication?) -> Void
     private let toggle: () -> Void
 
-    init(add: @escaping () -> Void, toggle: @escaping () -> Void) {
+    init(add: @escaping (NSRunningApplication?) -> Void, toggle: @escaping () -> Void) {
         self.add = add
         self.toggle = toggle
         var eventSpec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
@@ -307,8 +337,9 @@ final class GlobalShortcutMonitor {
             var hotKeyID = EventHotKeyID()
             let size = UInt32(MemoryLayout<EventHotKeyID>.size)
             GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil, Int(size), nil, &hotKeyID)
+            let foreground = NSWorkspace.shared.frontmostApplication
             DispatchQueue.main.async {
-                monitor.fire(hotKeyID.id)
+                monitor.fire(hotKeyID.id, app: foreground)
             }
             return noErr
         }
@@ -319,6 +350,7 @@ final class GlobalShortcutMonitor {
         let addID = EventHotKeyID(signature: signature, id: 1)
         let toggleID = EventHotKeyID(signature: signature, id: 2)
         let addStatus = RegisterEventHotKey(UInt32(kVK_ANSI_L), modifiers, addID, GetApplicationEventTarget(), 0, &addRef)
+        RegisterEventHotKey(UInt32(kVK_ANSI_L), modifiers | UInt32(cmdKey), EventHotKeyID(signature: signature, id: 3), GetApplicationEventTarget(), 0, &commandAddRef)
         let toggleStatus = RegisterEventHotKey(UInt32(kVK_ANSI_K), modifiers, toggleID, GetApplicationEventTarget(), 0, &toggleRef)
         RuntimeLog.write("shortcut registration handler=\(handlerStatus) add=\(addStatus) toggle=\(toggleStatus)")
         if addStatus != noErr || toggleStatus != noErr {
@@ -335,16 +367,17 @@ final class GlobalShortcutMonitor {
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in fallback(event); return event }
     }
 
-    private func fire(_ id: UInt32) {
+    private func fire(_ id: UInt32, app: NSRunningApplication? = NSWorkspace.shared.frontmostApplication) {
         let now = Date()
         guard now.timeIntervalSince(lastFire) > 0.20 else { return }
         lastFire = now
         RuntimeLog.write("shortcut received id=\(id)")
-        if id == 1 { add() }
+        if id == 1 || id == 3 { add(app) }
         if id == 2 { toggle() }
     }
 
     deinit {
+        if let commandAddRef { UnregisterEventHotKey(commandAddRef) }
         if let addRef { UnregisterEventHotKey(addRef) }
         if let toggleRef { UnregisterEventHotKey(toggleRef) }
         if let eventHandler { RemoveEventHandler(eventHandler) }
@@ -942,15 +975,15 @@ struct FloatingPanelView: View {
         }
         .background(Color.laterSurface)
         .overlay(alignment: .bottom) {
-            if coordinator.limitReached {
-                Text("Card limit reached.")
+            if let feedback = coordinator.feedback {
+                Text(feedback)
                     .font(.system(size: 13, weight: .medium))
                     .padding(.horizontal, 16).padding(.vertical, 10)
                     .background(Color.laterElevated, in: RoundedRectangle(cornerRadius: 12))
                     .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.laterAccent.opacity(0.4)))
                     .padding(12)
                     .allowsHitTesting(false)
-                    .accessibilityLabel("Card limit reached. Finish a card before adding another.")
+                    .accessibilityLabel(coordinator.limitReached ? "Card limit reached. Finish a card before adding another." : feedback)
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
@@ -1058,7 +1091,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         floatingPanel = FloatingPanelController(coordinator: coordinator) { [weak self] in
             self?.showSettings()
         }
-        shortcuts = GlobalShortcutMonitor(add: { [weak self] in self?.coordinator.addCurrent() }, toggle: { [weak self] in self?.floatingPanel.togglePanel() })
+        shortcuts = GlobalShortcutMonitor(add: { [weak self] app in self?.coordinator.addCurrent(app: app) }, toggle: { [weak self] in self?.floatingPanel.togglePanel() })
     }
 
     @objc private func showSettings() {
