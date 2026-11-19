@@ -16,10 +16,10 @@ enum ConversationSource: String, Codable {
     init?(app: NSRunningApplication) {
         switch app.bundleIdentifier {
         case ChatGPTAX.bundleID: self = .chatGPT
-        case "com.bot.pc.doubao": self = .doubao
+        case "com.bot.pc.doubao", "com.bot.pc.doubao.browser": self = .doubao
         case OfficeClient.buddy.bundle: self = .workBuddy
         case OfficeClient.qwen.bundle: self = .qwenWork
-        case "com.work.pc.doubao": self = .doubaoWork
+        case "com.work.pc.doubao", "com.work.pc.doubao.browser": self = .doubaoWork
         default: return nil
         }
     }
@@ -45,13 +45,11 @@ enum ConversationSource: String, Codable {
             guard let url = URL(string: target), DoubaoCapture.isClientConversation(url, work: true) else { throw DoubaoError.open }
             try await DoubaoCapture.reopenClientConversation(url, work: true)
         case .doubao:
-            if let route = URL(string: target), DoubaoCapture.isClientConversation(route) {
-                try await DoubaoCapture.reopenClientConversation(route)
-                return
-            }
-            guard let url = DoubaoCapture.officialURL(target), NSWorkspace.shared.open(url) else {
+            guard let route = URL(string: target),
+                  DoubaoCapture.isClientConversation(route) || DoubaoCapture.officialURL(target) != nil else {
                 throw DoubaoError.open
             }
+            try await DoubaoCapture.reopenChatWindow(route)
         }
     }
 }
@@ -85,6 +83,107 @@ enum DoubaoCapture {
         return ChatGPTAX.string(node, kAXValueAttribute).flatMap(URL.init(string:))
     }
 
+    @MainActor static func reopenChatWindow(_ target: URL) async throws {
+        // Capture accepts chat pages owned by either regular Doubao process.
+        // Resolve the same owners here, filtering by the chat page before activation.
+        let apps = ["com.bot.pc.doubao", "com.bot.pc.doubao.browser"].flatMap {
+            NSRunningApplication.runningApplications(withBundleIdentifier: $0)
+        }
+        typealias ChatWindow = (app: NSRunningApplication, root: AXUIElement, window: AXUIElement, area: AXUIElement)
+        func visibleChatWindows() -> [ChatWindow] {
+            var result: [ChatWindow] = []
+            for app in apps {
+                let root = AXUIElementCreateApplication(app.processIdentifier)
+                var windows = ChatGPTAX.copy(root, kAXWindowsAttribute) as? [AXUIElement] ?? []
+                for key in [kAXMainWindowAttribute, kAXFocusedWindowAttribute] {
+                    if let value = ChatGPTAX.copy(root, key), CFGetTypeID(value) == AXUIElementGetTypeID() {
+                        windows.insert(value as! AXUIElement, at: 0)
+                    }
+                }
+                var seen = Set<AXUIElement>()
+                for window in windows where seen.insert(window).inserted {
+                    var pending = [window]
+                    while let node = pending.popLast() {
+                        if ChatGPTAX.role(node) != "AXWebArea" {
+                            pending.append(contentsOf: ChatGPTAX.children(node))
+                        } else if let page = address(node), page.scheme == "chrome", page.host == "doubao-chat",
+                                  page.path == "/chat" || page.path.hasPrefix("/chat/") {
+                            result.append((app, root, window, node))
+                            break
+                        }
+                    }
+                }
+            }
+            return result
+        }
+        var candidates = visibleChatWindows()
+        if candidates.isEmpty, let client = apps.first(where: { $0.bundleIdentifier == "com.bot.pc.doubao" }) {
+            // A background Doubao process can be running with its full-size window
+            // offscreen. Reopen the main app as Finder would, without sending a URL.
+            guard let location = client.bundleURL else { throw DoubaoError.open }
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = true
+            config.createsNewApplicationInstance = false
+            config.addsToRecentItems = false
+            if client.isHidden { client.unhide() }
+            _ = try await NSWorkspace.shared.openApplication(at: location, configuration: config)
+            let root = AXUIElementCreateApplication(client.processIdentifier)
+            let nativeWindows = ChatGPTAX.copy(root, kAXWindowsAttribute) as? [AXUIElement] ?? []
+            let chatWindows = nativeWindows.filter {
+                ChatGPTAX.string($0, kAXSubroleAttribute) == kAXStandardWindowSubrole &&
+                    ChatGPTAX.label($0) == "豆包"
+            }
+            if chatWindows.count == 1 {
+                let window = chatWindows[0]
+                if ChatGPTAX.copy(window, kAXMinimizedAttribute) as? Bool == true {
+                    AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
+                }
+                AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+            }
+            _ = await ChatGPTAX.waitUntil(4, {
+                candidates = visibleChatWindows()
+                return !candidates.isEmpty
+            })
+            RuntimeLog.write("doubao background restore: active=\(client.isActive) nativeWindows=\(nativeWindows.count) chatPages=\(candidates.count)")
+        }
+        for (app, root, window, node) in candidates {
+            let current = address(node)
+            func targetRow() -> AXUIElement? {
+                ChatGPTAX.allNodes(node).first { ChatGPTAX.role($0) == "AXLink" && address($0) == target }
+            }
+            if current != target && targetRow() == nil {
+                let reveal = ChatGPTAX.allNodes(node).filter {
+                    ChatGPTAX.role($0) == "AXButton" &&
+                        ["展开侧栏", "打开侧栏", "展开侧边栏", "打开侧边栏", "展开更多"].contains(ChatGPTAX.label($0))
+                }
+                for button in reveal {
+                    guard AXUIElementPerformAction(button, kAXPressAction as CFString) == .success else { continue }
+                    if await ChatGPTAX.waitUntil(0.8, { targetRow() != nil }) { break }
+                }
+                guard targetRow() != nil else { continue }
+            }
+            if ChatGPTAX.copy(window, kAXMinimizedAttribute) as? Bool == true {
+                AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
+            }
+            AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+            if !app.isActive { app.activate(options: [.activateIgnoringOtherApps]) }
+            func focused() -> Bool {
+                app.isActive && ChatGPTAX.copy(root, kAXFocusedWindowAttribute).map { CFEqual($0, window) } == true
+            }
+            guard await ChatGPTAX.waitUntil(1.5, focused) else { throw DoubaoError.open }
+            if address(node) == target { return }
+            guard let row = targetRow(), AXUIElementPerformAction(row, kAXPressAction as CFString) == .success else {
+                throw DoubaoError.open
+            }
+            if await ChatGPTAX.waitUntil(3, {
+                focused() && ChatGPTAX.allNodes(window).first(where: { ChatGPTAX.role($0) == "AXWebArea" }).flatMap(address) == target
+            }) { return }
+            throw DoubaoError.open
+        }
+        RuntimeLog.write("doubao: no matching row; inspected chat windows=\(candidates.count)")
+        throw DoubaoError.open
+    }
+
     @MainActor static func reopenClientConversation(_ target: URL, work: Bool = false) async throws {
         let bundle = work ? "com.work.pc.doubao" : "com.bot.pc.doubao"
         guard let location = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle) else {
@@ -95,31 +194,32 @@ enum DoubaoCapture {
         var pressed = false
         var expanded = false
         var lastPress = -20
-        for attempt in 0..<(work ? 50 : 25) {
+        var dispatched = false
+        var sawRow = false
+        for attempt in 0..<50 {
             try await Task.sleep(nanoseconds: 120_000_000)
             guard NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier else { continue }
             guard let window = ChatGPTAX.copy(root, kAXFocusedWindowAttribute),
                   CFGetTypeID(window) == AXUIElementGetTypeID() else { continue }
             let nodes = ChatGPTAX.allNodes(window as! AXUIElement)
             if nodes.contains(where: { ChatGPTAX.role($0) == "AXWebArea" && address($0) == target }) { return }
-            if work {
-                // Reopening the app may focus a different chat window.
-                let windows = ChatGPTAX.copy(root, kAXWindowsAttribute) as? [AXUIElement] ?? []
-                for candidate in windows where !CFEqual(candidate, window) {
-                    if ChatGPTAX.allNodes(candidate).contains(where: { ChatGPTAX.role($0) == "AXWebArea" && address($0) == target }) {
-                        AXUIElementPerformAction(candidate, kAXRaiseAction as CFString)
-                        break
-                    }
+            let windows = ChatGPTAX.copy(root, kAXWindowsAttribute) as? [AXUIElement] ?? []
+            if let existing = windows.first(where: { candidate in
+                !CFEqual(candidate, window) && ChatGPTAX.allNodes(candidate).contains {
+                    ChatGPTAX.role($0) == "AXWebArea" && address($0) == target
                 }
-                if attempt == 24 {
-                    // Address comes verbatim from the work client. Dispatch it only
-                    // to that application and continue verifying the focused page.
-                    _ = try? await NSWorkspace.shared.open([target], withApplicationAt: location, configuration: .init())
-                    continue
-                }
-                if attempt - lastPress >= 12 { pressed = false }
+            }), AXUIElementPerformAction(existing, kAXRaiseAction as CFString) == .success {
+                if attempt < 24 { continue }
             }
+            if attempt >= 24 && !dispatched {
+                // Target the owning client with the exact address captured from its page.
+                dispatched = true
+                _ = try? await NSWorkspace.shared.open([target], withApplicationAt: location, configuration: .init())
+                continue
+            }
+            if attempt - lastPress >= 12 { pressed = false }
             if !pressed, let row = nodes.first(where: { ChatGPTAX.role($0) == "AXLink" && address($0) == target }) {
+                sawRow = true
                 lastPress = attempt
                 pressed = AXUIElementPerformAction(row, kAXPressAction as CFString) == .success
             } else if !pressed && !expanded, let toggle = nodes.first(where: {
@@ -128,106 +228,63 @@ enum DoubaoCapture {
                 expanded = AXUIElementPerformAction(toggle, kAXPressAction as CFString) == .success
             }
         }
+        RuntimeLog.write("doubao reopen unverified: sidebarRow=\(sawRow) addressDispatched=\(dispatched)")
         throw DoubaoError.open
     }
 
     @MainActor static func capture(_ app: NSRunningApplication, work: Bool = false) async throws -> (String, String) {
         let root = AXUIElementCreateApplication(app.processIdentifier)
         guard AXIsProcessTrusted() else { throw DoubaoError.link }
-        guard let windowValue = ChatGPTAX.copy(root, kAXFocusedWindowAttribute),
-              CFGetTypeID(windowValue) == AXUIElementGetTypeID() else { throw DoubaoError.missing }
-        let window = windowValue as! AXUIElement
-        let nodes = ChatGPTAX.allNodes(window)
-        func url(_ node: AXUIElement) -> URL? {
-            ChatGPTAX.copy(node, kAXURLAttribute) as? URL
-        }
-        guard let area = nodes.first(where: { ChatGPTAX.role($0) == "AXWebArea" }),
-              let current = url(area), isClientConversation(current, work: work) else {
-            throw DoubaoError.missing
-        }
-        func active() -> Bool {
-            NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier && url(area) == current
-        }
-        let row = nodes.first { ChatGPTAX.role($0) == "AXLink" && address($0) == current }
-        let title = row.map(ChatGPTAX.label)?.replacingOccurrences(of: " 归档对话 更多", with: "")
-        if work {
-            let pageTitle = ChatGPTAX.string(area, kAXTitleAttribute) ?? ""
-            let suffix = " - 豆包工作"
-            if pageTitle.hasSuffix(suffix), active() {
-                let name = String(pageTitle.dropLast(suffix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
-                if !name.isEmpty { return (name, current.absoluteString) }
-            }
-            guard let row, active() else { throw DoubaoError.missing }
-            // Chromium can expose action names in AXTitle and the conversation
-            // name in AXDescription or as a nested static text element.
-            let textNodes = ChatGPTAX.allNodes(row, limit: 40).filter { ChatGPTAX.role($0) == "AXStaticText" }
-            let names = [ChatGPTAX.string(row, kAXDescriptionAttribute), ChatGPTAX.string(row, kAXTitleAttribute)]
-                + textNodes.map { ChatGPTAX.string($0, kAXValueAttribute) }
-            for name in names.compactMap({ $0 }) {
-                let cleaned = name.replacingOccurrences(of: #"(?:^|\s+)(?:归档对话\s+)?更多\s*$"#, with: "", options: .regularExpression)
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                if !cleaned.isEmpty && !["归档对话", "更多"].contains(cleaned) {
-                    return (cleaned, current.absoluteString)
-                }
-            }
-            throw DoubaoError.missing
-        }
-        // The client exposes the same conversation address on the active page
-        // and its sidebar link. Retain that exact address for native AX navigation.
-        if row != nil && active() {
-            return (title?.isEmpty == false ? title! : "Doubao conversation", current.absoluteString)
-        }
-        let board = NSPasteboard.general
-        func press(_ node: AXUIElement) throws {
-            guard active(), AXUIElementPerformAction(node, kAXPressAction as CFString) == .success else {
-                throw DoubaoError.link
-            }
-        }
-        guard let sidebar = nodes.first(where: { ["收起侧栏", "展开侧栏"].contains(ChatGPTAX.label($0)) }),
-              let parent = ChatGPTAX.copy(sidebar, kAXParentAttribute),
-              let more = ChatGPTAX.children(parent as! AXUIElement).first(where: { ChatGPTAX.label($0) == "更多" }) else {
-            throw DoubaoError.link
-        }
-        let originalControls = Set(nodes)
-        try press(more)
-        let copyNames = ["复制链接", "复制对话链接", "Copy Link", "Copy conversation link"]
-        var openedShare = false
-        for _ in 0..<12 {
-            try await Task.sleep(nanoseconds: 100_000_000)
-            guard active() else { throw DoubaoError.link }
-            let controls = ChatGPTAX.allNodes(root).filter {
-                !originalControls.contains($0) && ["AXMenuItem", "AXButton", "AXLink"].contains(ChatGPTAX.role($0))
-            }
-            if let copy = controls.first(where: { copyNames.contains(ChatGPTAX.label($0)) }) {
-                let revision = board.changeCount
-                let saved = (board.pasteboardItems ?? []).map { item in
-                    let clone = NSPasteboardItem()
-                    for type in item.types {
-                        if let data = item.data(forType: type) { clone.setData(data, forType: type) }
+        let provider = work ? "豆包工作" : "豆包"
+        let host = work ? "doubaowork-chat" : "doubao-chat"
+        var stage = "focused-window"
+        for _ in 0..<8 {
+            guard NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier else { throw DoubaoError.missing }
+            if let focused = ChatGPTAX.copy(root, kAXFocusedWindowAttribute) ?? ChatGPTAX.copy(root, kAXMainWindowAttribute),
+               CFGetTypeID(focused) == AXUIElementGetTypeID() {
+                let window = focused as! AXUIElement
+                var pending = [window]
+                var results: [(String, String)] = []
+                stage = "chat-page"
+                while let node = pending.popLast() {
+                    guard ChatGPTAX.role(node) == "AXWebArea" else {
+                        pending.append(contentsOf: ChatGPTAX.children(node))
+                        continue
                     }
-                    return clone
-                }
-                try press(copy)
-                for _ in 0..<25 {
-                    try await Task.sleep(nanoseconds: 80_000_000)
-                    guard board.changeCount != revision else { continue }
-                    let changed = board.changeCount
-                    guard let value = board.string(forType: .URL) ?? board.string(forType: .string),
-                          let link = officialURL(value) else { throw DoubaoError.link }
-                    if board.changeCount == changed {
-                        board.clearContents()
-                        if !saved.isEmpty { board.writeObjects(saved) }
+                    guard let page = address(node), page.host == host else { continue }
+                    stage = "conversation-address"
+                    let suffix = " - " + provider
+                    let heading = ChatGPTAX.label(node)
+                    let title = heading.hasSuffix(suffix) ? String(heading.dropLast(suffix.count)) : nil
+                    let rows = ChatGPTAX.allNodes(node).filter {
+                        ChatGPTAX.role($0) == "AXLink" && address($0).map { isClientConversation($0, work: work) } == true
                     }
-                    guard active() else { throw DoubaoError.link }
-                    return (title?.isEmpty == false ? title! : "Doubao conversation", link.absoluteString)
+                    func rowName(_ row: AXUIElement) -> String? {
+                        for key in [kAXDescriptionAttribute, kAXTitleAttribute] {
+                            guard let raw = ChatGPTAX.string(row, key) else { continue }
+                            let name = raw.replacingOccurrences(of: #"(?:^|\s+)(?:归档对话\s+)?更多\s*$"#, with: "", options: .regularExpression)
+                                .trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !name.isEmpty && name != "归档对话" { return name }
+                        }
+                        return nil
+                    }
+                    if isClientConversation(page, work: work) {
+                        let name = title ?? rows.first(where: { address($0) == page }).flatMap(rowName)
+                        results.append((name ?? provider + "对话", page.absoluteString))
+                    } else if page.path == "/chat", let title, !title.isEmpty {
+                        let matches = rows.filter { rowName($0) == title }
+                        if matches.count == 1, let link = address(matches[0]) {
+                            results.append((title, link.absoluteString))
+                        }
+                    }
                 }
-                break
+                if results.count == 1, NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier,
+                   let stillFocused = ChatGPTAX.copy(root, kAXFocusedWindowAttribute) ?? ChatGPTAX.copy(root, kAXMainWindowAttribute),
+                   CFEqual(stillFocused, window) { return results[0] }
             }
-            if !openedShare, let share = controls.first(where: { ["分享对话", "分享", "Share Conversation"].contains(ChatGPTAX.label($0)) }) {
-                try press(share)
-                openedShare = true
-            }
+            try await Task.sleep(nanoseconds: 120_000_000)
         }
-        throw DoubaoError.link
+        RuntimeLog.write("capture unavailable provider=\(provider) stage=\(stage)")
+        throw DoubaoError.missing
     }
 }

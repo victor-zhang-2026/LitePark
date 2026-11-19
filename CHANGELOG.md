@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.1 — 2026-11-19
+
+- Restore the running Doubao chat window when opening a parked conversation from another app, then select and verify the saved conversation.
+- Improve foreground conversation detection in Doubao and Doubao Work.
+
 ## 1.2.0 — 2026-11-18
 
 Park conversations from ChatGPT, Doubao, Doubao Work, WorkBuddy and Qwen Work on one macOS Parking Board. Each card shows its source and opens the corresponding conversation. Add follows the foreground app. Existing ChatGPT cards retain their order. ChatGPT reopening now handles more sidebar layouts, pagination and collapsed projects.
