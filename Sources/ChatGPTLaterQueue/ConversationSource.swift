@@ -83,6 +83,22 @@ enum DoubaoCapture {
         return ChatGPTAX.string(node, kAXValueAttribute).flatMap(URL.init(string:))
     }
 
+    // Doubao clients are Electron apps whose web content is hidden from AX
+    // until accessibility is requested, the same quirk repaired for ChatGPT.
+    static func exposeAccessibility(_ bundleIDs: [String]) {
+        for bundle in bundleIDs {
+            for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundle) {
+                let root = AXUIElementCreateApplication(app.processIdentifier)
+                if ChatGPTAX.copy(root, "AXManualAccessibility") as? Bool != true {
+                    AXUIElementSetAttributeValue(root, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+                }
+                if ChatGPTAX.copy(root, "AXEnhancedUserInterface") as? Bool != true {
+                    AXUIElementSetAttributeValue(root, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+                }
+            }
+        }
+    }
+
     @MainActor static func reopenChatWindow(_ target: URL) async throws {
         // Capture accepts chat pages owned by either regular Doubao process.
         // Resolve the same owners here, filtering by the chat page before activation.
@@ -118,8 +134,10 @@ enum DoubaoCapture {
         }
         var candidates = visibleChatWindows()
         if candidates.isEmpty, let client = apps.first(where: { $0.bundleIdentifier == "com.bot.pc.doubao" }) {
-            // A background Doubao process can be running with its full-size window
-            // offscreen. Reopen the main app as Finder would, without sending a URL.
+            // A background Doubao process can be running without an exposed
+            // window. Reopen the main app as Finder would, without sending a
+            // URL, enable web-content accessibility, and keep raising its
+            // windows until a chat page shows up.
             guard let location = client.bundleURL else { throw DoubaoError.open }
             let config = NSWorkspace.OpenConfiguration()
             config.activates = true
@@ -127,24 +145,23 @@ enum DoubaoCapture {
             config.addsToRecentItems = false
             if client.isHidden { client.unhide() }
             _ = try await NSWorkspace.shared.openApplication(at: location, configuration: config)
+            exposeAccessibility(["com.bot.pc.doubao", "com.bot.pc.doubao.browser"])
             let root = AXUIElementCreateApplication(client.processIdentifier)
-            let nativeWindows = ChatGPTAX.copy(root, kAXWindowsAttribute) as? [AXUIElement] ?? []
-            let chatWindows = nativeWindows.filter {
-                ChatGPTAX.string($0, kAXSubroleAttribute) == kAXStandardWindowSubrole &&
-                    ChatGPTAX.label($0) == "豆包"
-            }
-            if chatWindows.count == 1 {
-                let window = chatWindows[0]
-                if ChatGPTAX.copy(window, kAXMinimizedAttribute) as? Bool == true {
-                    AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
+            var nativeWindows = 0
+            _ = await ChatGPTAX.waitUntil(12, {
+                let windows = ChatGPTAX.copy(root, kAXWindowsAttribute) as? [AXUIElement] ?? []
+                nativeWindows = windows.count
+                for window in windows where ChatGPTAX.string(window, kAXSubroleAttribute) == kAXStandardWindowSubrole {
+                    if ChatGPTAX.copy(window, kAXMinimizedAttribute) as? Bool == true {
+                        AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
+                    }
+                    AXUIElementPerformAction(window, kAXRaiseAction as CFString)
                 }
-                AXUIElementPerformAction(window, kAXRaiseAction as CFString)
-            }
-            _ = await ChatGPTAX.waitUntil(4, {
+                if !client.isActive { client.activate(options: [.activateIgnoringOtherApps]) }
                 candidates = visibleChatWindows()
                 return !candidates.isEmpty
             })
-            RuntimeLog.write("doubao background restore: active=\(client.isActive) nativeWindows=\(nativeWindows.count) chatPages=\(candidates.count)")
+            RuntimeLog.write("doubao background restore: active=\(client.isActive) nativeWindows=\(nativeWindows) chatPages=\(candidates.count)")
         }
         for (app, root, window, node) in candidates {
             let current = address(node)
@@ -190,6 +207,7 @@ enum DoubaoCapture {
             throw DoubaoError.open
         }
         let app = try await NSWorkspace.shared.openApplication(at: location, configuration: .init())
+        exposeAccessibility(work ? ["com.work.pc.doubao", "com.work.pc.doubao.browser"] : ["com.bot.pc.doubao", "com.bot.pc.doubao.browser"])
         let root = AXUIElementCreateApplication(app.processIdentifier)
         var pressed = false
         var expanded = false
@@ -237,8 +255,10 @@ enum DoubaoCapture {
         guard AXIsProcessTrusted() else { throw DoubaoError.link }
         let provider = work ? "豆包工作" : "豆包"
         let host = work ? "doubaowork-chat" : "doubao-chat"
+        let family = work ? ["com.work.pc.doubao", "com.work.pc.doubao.browser"] : ["com.bot.pc.doubao", "com.bot.pc.doubao.browser"]
+        exposeAccessibility(family)
         var stage = "focused-window"
-        for _ in 0..<8 {
+        for _ in 0..<16 {
             guard NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier else { throw DoubaoError.missing }
             if let focused = ChatGPTAX.copy(root, kAXFocusedWindowAttribute) ?? ChatGPTAX.copy(root, kAXMainWindowAttribute),
                CFGetTypeID(focused) == AXUIElementGetTypeID() {
@@ -251,6 +271,7 @@ enum DoubaoCapture {
                         pending.append(contentsOf: ChatGPTAX.children(node))
                         continue
                     }
+                    stage = "web-area"
                     guard let page = address(node), page.host == host else { continue }
                     stage = "conversation-address"
                     let suffix = " - " + provider
@@ -282,7 +303,7 @@ enum DoubaoCapture {
                    let stillFocused = ChatGPTAX.copy(root, kAXFocusedWindowAttribute) ?? ChatGPTAX.copy(root, kAXMainWindowAttribute),
                    CFEqual(stillFocused, window) { return results[0] }
             }
-            try await Task.sleep(nanoseconds: 120_000_000)
+            try await Task.sleep(nanoseconds: 250_000_000)
         }
         RuntimeLog.write("capture unavailable provider=\(provider) stage=\(stage)")
         throw DoubaoError.missing

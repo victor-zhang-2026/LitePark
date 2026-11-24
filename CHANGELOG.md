@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.2 — 2026-11-24
+
+- Park conversations from Doubao, Doubao Work and WorkBuddy reliably when their windows start in the background or their web content is not yet exposed to Accessibility.
+- Enable Doubao's accessibility switches before capture and reopening, keep raising background windows until a chat page appears, and extend capture retries.
+- Record the failure stage in the runtime log when a capture still cannot locate the conversation.
+
 ## 1.2.1 — 2026-11-19
 
 - Restore the running Doubao chat window when opening a parked conversation from another app, then select and verify the saved conversation.

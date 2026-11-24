@@ -104,18 +104,24 @@ enum OfficeClient {
     }
 
     @MainActor func capture(_ app: NSRunningApplication) async throws -> (String, String) {
-        for _ in 0..<8 {
+        let name = self == .buddy ? "WorkBuddy" : "千问办公"
+        var stage = "window-unavailable"
+        for _ in 0..<16 {
             guard app.isActive else { throw missing }
             if let focused = try? window(app) {
+                stage = "title-unresolved"
                 let nodes = ChatGPTAX.allNodes(focused)
-                if let current = title(focused, nodes), !current.isEmpty,
-                   rows(nodes, title: current).count <= 1, app.isActive {
-                    if self == .buddy, let link = buddySession(current) { return (current, link.absoluteString) }
-                    return (current, current)
+                if let current = title(focused, nodes), !current.isEmpty {
+                    stage = "sidebar-rows"
+                    if rows(nodes, title: current).count <= 1, app.isActive {
+                        if self == .buddy, let link = buddySession(current) { return (current, link.absoluteString) }
+                        return (current, current)
+                    }
                 }
             }
-            try await Task.sleep(nanoseconds: 120_000_000)
+            try await Task.sleep(nanoseconds: 250_000_000)
         }
+        RuntimeLog.write("office capture unavailable client=\(name) stage=\(stage)")
         throw missing
     }
 
